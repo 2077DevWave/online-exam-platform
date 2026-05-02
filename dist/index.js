@@ -10,7 +10,7 @@ const database_1 = require("./database");
 const teacher_1 = __importDefault(require("./routes/teacher"));
 const student_1 = __importDefault(require("./routes/student")); // <-- import
 const app = (0, express_1.default)();
-const PORT = process.env.PORT || 3000;
+const PORT = 3000;
 app.use(express_1.default.json());
 app.use(express_1.default.static(path_1.default.join(__dirname, '..', 'public')));
 // Teacher API
@@ -27,8 +27,8 @@ app.get('/api/health', (req, res) => {
 async function start() {
     await (0, database_1.getDb)();
     console.log('Database ready.');
-    app.listen(PORT, () => {
-        console.log(`Server running on http://localhost:${PORT}`);
+    app.listen(PORT, '0.0.0.0', () => {
+        console.log(`Server running on http://0.0.0.0:${PORT}`);
     });
 }
 start().catch(console.error);
