@@ -1,0 +1,10 @@
+{
+  "app": "online-exam",
+  "port": 3000,
+  "disks": [
+        {
+        "name": "my-disk",
+        "mountPath": "/app/storage"
+        }
+    ]
+}
