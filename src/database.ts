@@ -3,7 +3,8 @@ import initSqlJs, { Database } from 'sql.js';
 import fs from 'fs';
 import path from 'path';
 
-const DB_PATH = path.join(__dirname, '..', 'data', 'exam.db');
+// Use environment variable or default to local "data" folder
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'exam.db');
 
 let db: Database;
 
@@ -11,6 +12,12 @@ export async function getDb(): Promise<Database> {
   if (db) return db;
 
   const SQL = await initSqlJs();
+
+  // Ensure the directory exists
+  const dir = path.dirname(DB_PATH);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
 
   // Try to load existing database file
   if (fs.existsSync(DB_PATH)) {
