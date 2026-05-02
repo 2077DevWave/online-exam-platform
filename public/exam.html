@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Exam</title>
+  <style>
+    :root {
+      --bg: #f5f7fa;
+      --card: white;
+      --border: #dce1e8;
+      --primary: #3498db;
+      --danger: #e74c3c;
+      --success: #27ae60;
+      --text: #2c3e50;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 20px;
+    }
+    .container { max-width: 700px; margin: 0 auto; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    h1, h2 { margin-bottom: 16px; }
+    label { display: block; margin-bottom: 6px; font-weight: 500; }
+    input { width: 100%; padding: 10px; margin-bottom: 16px; border: 1px solid var(--border); border-radius: 6px; }
+    button {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      background: var(--primary);
+      color: white;
+      font-size: 16px;
+    }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    #timer {
+      font-size: 24px;
+      font-weight: bold;
+      text-align: center;
+      padding: 10px;
+      background: #fdf0d5;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    .question-block {
+      margin-bottom: 20px;
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fafbfc;
+    }
+    .options label { display: block; margin: 8px 0; font-weight: normal; }
+    .hidden { display: none; }
+    .error { color: var(--danger); }
+    .score { font-size: 20px; text-align: center; margin: 20px 0; }
+  </style>
+</head>
+<body>
+<div class="container" id="app">
+  <!-- START SCREEN -->
+  <div id="startScreen" class="card">
+    <h1 id="examTitle">Loading...</h1>
+    <p id="examInfo"></p>
+    <div id="studentFields">
+      <div id="nameField" class="hidden">
+        <label>Your Name</label>
+        <input type="text" id="studentName" placeholder="Enter your name">
+      </div>
+      <div id="idField" class="hidden">
+        <label>Student ID</label>
+        <input type="text" id="studentId" placeholder="Enter your student ID">
+      </div>
+      <p class="error" id="startError"></p>
+    </div>
+    <button onclick="startExam()">Start Exam</button>
+    <p style="margin-top:12px;"><a href="teacher.html">Teacher Panel</a></p>
+  </div>
+
+  <!-- EXAM SCREEN -->
+  <div id="examScreen" class="hidden">
+    <div id="timer">00:00</div>
+    <div id="questionsContainer"></div>
+    <button id="submitBtn" onclick="submitExam()">Submit Exam</button>
+    <p class="error" id="examError"></p>
+  </div>
+
+  <!-- RESULT SCREEN -->
+  <div id="resultScreen" class="hidden card">
+    <h2>Exam Submitted</h2>
+    <div class="score" id="resultText"></div>
+    <button onclick="window.location.reload()">Take Another Exam</button>
+  </div>
+</div>
+
+<script>
+  const API = '/api';
+  const pathParts = window.location.pathname.split('/');
+  const examId = parseInt(pathParts[pathParts.length - 1]);
+
+  if (!examId || isNaN(examId)) {
+    document.getElementById('startScreen').innerHTML = '<h2>Invalid exam link</h2>';
+  }
+
+  let exam = null;
+  let timerInterval = null;
+  let startTime = null;
+  let timeLeft = 0;
+
+  // Load exam info
+  async function loadExam() {
+    try {
+      const res = await fetch(`${API}/exams/${examId}`);
+      if (!res.ok) throw new Error('Exam not found');
+      exam = await res.json();
+      document.getElementById('examTitle').textContent = exam.title;
+      document.getElementById('examInfo').textContent =
+        `${exam.questions.length} questions · ${exam.duration_minutes} minutes`;
+      
+      // Show/hide fields based on exam settings
+      if (exam.require_name) {
+        document.getElementById('nameField').classList.remove('hidden');
+      }
+      if (exam.require_student_id) {
+        document.getElementById('idField').classList.remove('hidden');
+      }
+    } catch (err) {
+      document.getElementById('startScreen').innerHTML = `<h2>${err.message}</h2>`;
+    }
+  }
+
+  function startExam() {
+    // Validate fields
+    const nameField = document.getElementById('studentName');
+    const idField = document.getElementById('studentId');
+    const errorEl = document.getElementById('startError');
+    
+    if (exam.require_name && !nameField.value.trim()) {
+      errorEl.textContent = 'Please enter your name.';
+      return;
+    }
+    if (exam.require_student_id && !idField.value.trim()) {
+      errorEl.textContent = 'Please enter your student ID.';
+      return;
+    }
+
+    document.getElementById('startScreen').classList.add('hidden');
+    document.getElementById('examScreen').classList.remove('hidden');
+
+    // Build questions HTML
+    let html = '';
+    exam.questions.forEach((q, i) => {
+      html += `
+        <div class="question-block">
+          <p><strong>${i + 1}. ${q.text}</strong></p>
+          <div class="options">
+            ${['A','B','C','D'].map(opt => `
+              <label>
+                <input type="radio" name="q_${q.id}" value="${opt}">
+                ${opt}) ${q[`option_${opt.toLowerCase()}`]}
+              </label>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    });
+    document.getElementById('questionsContainer').innerHTML = html;
+
+    // Start timer
+    timeLeft = exam.duration_minutes * 60;
+    startTime = new Date().toISOString();
+    updateTimerDisplay();
+    timerInterval = setInterval(() => {
+      timeLeft--;
+      updateTimerDisplay();
+      if (timeLeft <= 0) {
+        clearInterval(timerInterval);
+        submitExam(); // auto-submit
+      }
+    }, 1000);
+  }
+
+  function updateTimerDisplay() {
+    const minutes = Math.floor(timeLeft / 60);
+    const seconds = timeLeft % 60;
+    document.getElementById('timer').textContent =
+      `${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`;
+    if (timeLeft < 60) document.getElementById('timer').style.background = '#f8d7da';
+  }
+
+  async function submitExam() {
+    if (timerInterval) clearInterval(timerInterval);
+
+    const submitBtn = document.getElementById('submitBtn');
+    submitBtn.disabled = true;
+
+    // Gather answers
+    const answers = exam.questions.map(q => {
+      const selected = document.querySelector(`input[name="q_${q.id}"]:checked`);
+      return {
+        question_id: q.id,
+        selected_option: selected ? selected.value : null
+      };
+    });
+
+    const payload = {
+      exam_id: examId,
+      student_name: document.getElementById('studentName')?.value || null,
+      student_id: document.getElementById('studentId')?.value || null,
+      started_at: startTime,
+      answers: answers
+    };
+
+    try {
+      const res = await fetch(`${API}/submissions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        document.getElementById('examError').textContent = 'Submission failed: ' + (err.error || 'Unknown error');
+        submitBtn.disabled = false;
+        return;
+      }
+
+      const result = await res.json();
+      // Show result
+      document.getElementById('examScreen').classList.add('hidden');
+      document.getElementById('resultScreen').classList.remove('hidden');
+      document.getElementById('resultText').textContent =
+        `Your score: ${result.score.toFixed(1)}% (${Math.round(result.score * result.total_questions / 100)} / ${result.total_questions})`;
+    } catch (err) {
+      document.getElementById('examError').textContent = 'Network error, please try again.';
+      submitBtn.disabled = false;
+    }
+  }
+
+  // Load exam on page load
+  loadExam();
+</script>
+</body>
+</html>

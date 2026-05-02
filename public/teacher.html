@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Teacher Panel</title>
+  <style>
+    :root {
+      --bg: #f4f7fc;
+      --card-bg: white;
+      --border: #dce1e8;
+      --text: #2c3e50;
+      --primary: #3498db;
+      --danger: #e74c3c;
+      --success: #27ae60;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 20px;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 30px;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    h1, h2 { margin-bottom: 16px; }
+    label { display: block; margin-bottom: 6px; font-weight: 500; }
+    input, select, textarea {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    .row { display: flex; gap: 12px; }
+    .row > div { flex: 1; }
+    button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-success { background: var(--success); color: white; }
+    .btn-sm { padding: 6px 12px; font-size: 13px; }
+    .exam-list, .question-list {
+      list-style: none;
+      margin-top: 12px;
+    }
+    .exam-item, .question-item {
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #fafbfc;
+    }
+    .exam-item:hover, .question-item:hover { background: #f0f3f7; }
+    .selected { background: #e8f4fd; border-color: var(--primary); }
+    .hidden { display: none; }
+    .actions { display: flex; gap: 8px; }
+    .badge {
+      background: #ddd;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>📚 Teacher Panel</h1>
+
+  <!-- CREATE EXAM FORM -->
+  <div class="card">
+    <h2>Create New Exam</h2>
+    <div class="row">
+      <div>
+        <label>Title</label>
+        <input type="text" id="examTitle" placeholder="e.g., Math Quiz">
+      </div>
+      <div>
+        <label>Duration (minutes)</label>
+        <input type="number" id="examDuration" min="1" value="30">
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label><input type="checkbox" id="requireName" checked> Require student name</label>
+      </div>
+      <div>
+        <label><input type="checkbox" id="requireId"> Require student ID</label>
+      </div>
+    </div>
+    <button class="btn-primary" onclick="createExam()">Create Exam</button>
+    <p id="createMsg" style="margin-top:10px;color:green;"></p>
+  </div>
+
+  <!-- EXAMS LIST & QUESTIONS -->
+  <div class="card">
+    <h2>Your Exams</h2>
+    <ul class="exam-list" id="examList"></ul>
+    <p id="noExams" class="hidden">No exams yet. Create one above.</p>
+  </div>
+
+  <!-- QUESTION MANAGEMENT (hidden until exam selected) -->
+  <div class="card hidden" id="questionSection">
+    <h2>Questions for <span id="selectedExamTitle"></span></h2>
+    <ul class="question-list" id="questionList"></ul>
+
+    <h3 style="margin-top:20px;">Add Question</h3>
+    <input type="text" id="qText" placeholder="Question text">
+    <div class="row">
+      <input type="text" id="optA" placeholder="Option A">
+      <input type="text" id="optB" placeholder="Option B">
+    </div>
+    <div class="row">
+      <input type="text" id="optC" placeholder="Option C">
+      <input type="text" id="optD" placeholder="Option D">
+    </div>
+    <div>
+      <label>Correct Option</label>
+      <select id="correctOption">
+        <option value="A">A</option>
+        <option value="B">B</option>
+        <option value="C">C</option>
+        <option value="D">D</option>
+      </select>
+    </div>
+    <button class="btn-success" onclick="addQuestion()">Add Question</button>
+    <p id="qMsg" style="margin-top:10px;"></p>
+  </div>
+</div>
+
+<script>
+  const API = '/api';
+  let selectedExamId = null;
+
+  // Load exams on page load
+  window.addEventListener('DOMContentLoaded', loadExams);
+
+  async function loadExams() {
+    try {
+      const res = await fetch(`${API}/exams`);
+      const exams = await res.json();
+      const list = document.getElementById('examList');
+      const noExams = document.getElementById('noExams');
+      list.innerHTML = '';
+      if (exams.length === 0) {
+        noExams.classList.remove('hidden');
+      } else {
+        noExams.classList.add('hidden');
+        exams.forEach(exam => {
+          const li = document.createElement('li');
+          li.className = 'exam-item' + (selectedExamId === exam.id ? ' selected' : '');
+          li.innerHTML = `
+            <div>
+              <strong>${exam.title}</strong>
+              <span class="badge">${exam.duration_minutes} min</span>
+              ${exam.require_name ? ' 👤' : ''}${exam.require_student_id ? ' 🪪' : ''}
+            </div>
+            <div class="actions">
+              <button class="btn-primary btn-sm" onclick="selectExam(${exam.id})">Manage Questions</button>
+              <button class="btn-danger btn-sm" onclick="deleteExam(${exam.id})">Delete</button>
+            </div>
+          `;
+          list.appendChild(li);
+        });
+      }
+    } catch (err) {
+      console.error('Failed to load exams', err);
+    }
+  }
+
+  async function createExam() {
+    const title = document.getElementById('examTitle').value.trim();
+    const duration = parseInt(document.getElementById('examDuration').value);
+    const require_name = document.getElementById('requireName').checked;
+    const require_student_id = document.getElementById('requireId').checked;
+    const msg = document.getElementById('createMsg');
+
+    if (!title || !duration) {
+      msg.textContent = '❌ Title and duration are required.';
+      msg.style.color = 'red';
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API}/exams`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, duration_minutes: duration, require_name, require_student_id })
+      });
+      if (res.ok) {
+        msg.textContent = '✅ Exam created!';
+        msg.style.color = 'green';
+        document.getElementById('examTitle').value = '';
+        document.getElementById('examDuration').value = 30;
+        loadExams();
+      } else {
+        const err = await res.json();
+        msg.textContent = '❌ ' + (err.error || 'Failed');
+        msg.style.color = 'red';
+      }
+    } catch (err) {
+      msg.textContent = '❌ Network error';
+      msg.style.color = 'red';
+    }
+  }
+
+  async function selectExam(id) {
+    selectedExamId = id;
+    loadExams(); // refresh to show selection highlight
+    document.getElementById('questionSection').classList.remove('hidden');
+
+    try {
+      const res = await fetch(`${API}/exams/${id}`);
+      const exam = await res.json();
+      document.getElementById('selectedExamTitle').textContent = exam.title;
+      renderQuestions(exam.questions);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  function renderQuestions(questions) {
+    const list = document.getElementById('questionList');
+    list.innerHTML = '';
+    questions.forEach(q => {
+      const li = document.createElement('li');
+      li.className = 'question-item';
+      li.innerHTML = `
+        <div>
+          <strong>${q.text}</strong><br>
+          <small>A: ${q.option_a} | B: ${q.option_b} | C: ${q.option_c} | D: ${q.option_d}</small>
+          <span class="badge">Correct: ${q.correct_option}</span>
+        </div>
+        <button class="btn-danger btn-sm" onclick="deleteQuestion(${q.id})">Delete</button>
+      `;
+      list.appendChild(li);
+    });
+  }
+
+  async function addQuestion() {
+    if (!selectedExamId) return;
+    const text = document.getElementById('qText').value.trim();
+    const option_a = document.getElementById('optA').value.trim();
+    const option_b = document.getElementById('optB').value.trim();
+    const option_c = document.getElementById('optC').value.trim();
+    const option_d = document.getElementById('optD').value.trim();
+    const correct_option = document.getElementById('correctOption').value;
+    const msg = document.getElementById('qMsg');
+
+    if (!text || !option_a || !option_b || !option_c || !option_d) {
+      msg.textContent = '❌ All fields are required.';
+      msg.style.color = 'red';
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API}/exams/${selectedExamId}/questions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, option_a, option_b, option_c, option_d, correct_option })
+      });
+      if (res.ok) {
+        msg.textContent = '✅ Question added!';
+        msg.style.color = 'green';
+        // Clear inputs
+        document.getElementById('qText').value = '';
+        document.getElementById('optA').value = '';
+        document.getElementById('optB').value = '';
+        document.getElementById('optC').value = '';
+        document.getElementById('optD').value = '';
+        // Reload exam to show new question
+        selectExam(selectedExamId);
+      } else {
+        const err = await res.json();
+        msg.textContent = '❌ ' + (err.error || 'Failed');
+        msg.style.color = 'red';
+      }
+    } catch (err) {
+      msg.textContent = '❌ Network error';
+      msg.style.color = 'red';
+    }
+  }
+
+  async function deleteExam(id) {
+    if (!confirm('Delete this exam and all its questions/submissions?')) return;
+    try {
+      await fetch(`${API}/exams/${id}`, { method: 'DELETE' });
+      if (selectedExamId === id) {
+        selectedExamId = null;
+        document.getElementById('questionSection').classList.add('hidden');
+      }
+      loadExams();
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  async function deleteQuestion(qId) {
+    if (!confirm('Delete this question?')) return;
+    try {
+      await fetch(`${API}/questions/${qId}`, { method: 'DELETE' });
+      selectExam(selectedExamId); // refresh list
+    } catch (err) {
+      console.error(err);
+    }
+  }
+</script>
+</body>
+</html>
