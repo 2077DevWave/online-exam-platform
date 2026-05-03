@@ -3,7 +3,6 @@ import initSqlJs, { Database } from 'sql.js';
 import fs from 'fs';
 import path from 'path';
 
-// Use environment variable or default to local "data" folder
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'exam.db');
 
 let db: Database;
@@ -19,22 +18,29 @@ export async function getDb(): Promise<Database> {
     fs.mkdirSync(dir, { recursive: true });
   }
 
-  // Try to load existing database file
   if (fs.existsSync(DB_PATH)) {
     const fileBuffer = fs.readFileSync(DB_PATH);
     db = new SQL.Database(fileBuffer);
   } else {
-    // Create a new database
     db = new SQL.Database();
-    // Create core tables
+    // Core tables
     db.run(`
+      CREATE TABLE IF NOT EXISTS teachers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+
       CREATE TABLE IF NOT EXISTS exams (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        teacher_id INTEGER NOT NULL,
         title TEXT NOT NULL,
         duration_minutes INTEGER NOT NULL,
         require_name BOOLEAN DEFAULT 1,
         require_student_id BOOLEAN DEFAULT 0,
-        created_at TEXT DEFAULT (datetime('now'))
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE
       );
 
       CREATE TABLE IF NOT EXISTS questions (
@@ -71,16 +77,29 @@ export async function getDb(): Promise<Database> {
         FOREIGN KEY (question_id) REFERENCES questions(id)
       );
     `);
+    // Save initial empty DB
+    saveDb();
   }
 
   return db;
 }
 
-// Add this function inside database.ts (before saveDb)
+export function saveDb() {
+  if (db) {
+    const data = db.export();
+    const buffer = Buffer.from(data);
+    const dir = path.dirname(DB_PATH);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(DB_PATH, buffer);
+  }
+}
+
+// Helper to get last inserted row id
 export async function insertRow(sql: string, params: any[]): Promise<number> {
   const db = await getDb();
   db.run(sql, params);
-  // retrieve last inserted id
   const result = db.exec('SELECT last_insert_rowid() as id');
   if (result.length && result[0].values.length) {
     return result[0].values[0][0] as number;
@@ -88,17 +107,7 @@ export async function insertRow(sql: string, params: any[]): Promise<number> {
   throw new Error('Insert failed');
 }
 
-// Save the database to disk
-export function saveDb() {
-  if (db) {
-    const data = db.export();
-    const buffer = Buffer.from(data);
-    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-    fs.writeFileSync(DB_PATH, buffer);
-  }
-}
-
-// Periodic save (every 30 seconds) and on exit
+// Periodic save
 setInterval(saveDb, 30_000);
 process.on('exit', saveDb);
 process.on('SIGINT', () => { saveDb(); process.exit(); });

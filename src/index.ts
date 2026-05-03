@@ -2,22 +2,26 @@
 import express from 'express';
 import path from 'path';
 import { getDb } from './database';
+import authRoutes from './routes/auth';
 import teacherRoutes from './routes/teacher';
-import studentRoutes from './routes/student';   // <-- import
+import studentRoutes from './routes/student';
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
-// Teacher API
+// Auth routes (public)
+app.use('/api', authRoutes);
+
+// Teacher routes (protected)
 app.use('/api', teacherRoutes);
 
-// Student API
-app.use('/api', studentRoutes);   // <-- mount
+// Student routes (public)
+app.use('/api', studentRoutes);
 
-// Dynamic exam page: any /exam/xxx serves exam.html
+// Dynamic exam page
 app.get('/exam/:id', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'exam.html'));
 });
@@ -29,8 +33,8 @@ app.get('/api/health', (req, res) => {
 async function start() {
   await getDb();
   console.log('Database ready.');
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://0.0.0.0:${PORT}`);
+  app.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
   });
 }
 

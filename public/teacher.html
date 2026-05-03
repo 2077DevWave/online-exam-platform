@@ -84,83 +84,198 @@
       border-radius: 12px;
       font-size: 12px;
     }
+    .error { color: red; margin-top: 6px; }
   </style>
 </head>
 <body>
 <div class="container">
   <h1>📚 Teacher Panel</h1>
 
-  <!-- CREATE EXAM FORM -->
-  <div class="card">
-    <h2>Create New Exam</h2>
+  <!-- LOGIN/REGISTER (hidden if logged in) -->
+  <div id="authSection" class="card">
+    <h2 id="authTitle">Login</h2>
+    <input type="text" id="username" placeholder="Username">
+    <input type="password" id="password" placeholder="Password">
     <div class="row">
-      <div>
-        <label>Title</label>
-        <input type="text" id="examTitle" placeholder="e.g., Math Quiz">
-      </div>
-      <div>
-        <label>Duration (minutes)</label>
-        <input type="number" id="examDuration" min="1" value="30">
-      </div>
+      <button class="btn-primary" onclick="handleLogin()">Login</button>
+      <button class="btn-success" onclick="toggleAuthMode()">Switch to Register</button>
     </div>
-    <div class="row">
-      <div>
-        <label><input type="checkbox" id="requireName" checked> Require student name</label>
-      </div>
-      <div>
-        <label><input type="checkbox" id="requireId"> Require student ID</label>
-      </div>
-    </div>
-    <button class="btn-primary" onclick="createExam()">Create Exam</button>
-    <p id="createMsg" style="margin-top:10px;color:green;"></p>
+    <p id="authError" class="error"></p>
   </div>
 
-  <!-- EXAMS LIST & QUESTIONS -->
-  <div class="card">
-    <h2>Your Exams</h2>
-    <ul class="exam-list" id="examList"></ul>
-    <p id="noExams" class="hidden">No exams yet. Create one above.</p>
-  </div>
+  <!-- MAIN PANEL (hidden if not logged in) -->
+  <div id="mainPanel" class="hidden">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h2>Welcome, <span id="displayUsername"></span></h2>
+      <button class="btn-danger btn-sm" onclick="logout()">Logout</button>
+    </div>
 
-  <!-- QUESTION MANAGEMENT (hidden until exam selected) -->
-  <div class="card hidden" id="questionSection">
-    <h2>Questions for <span id="selectedExamTitle"></span></h2>
-    <ul class="question-list" id="questionList"></ul>
+    <!-- CREATE EXAM -->
+    <div class="card">
+      <h2>Create New Exam</h2>
+      <div class="row">
+        <div>
+          <label>Title</label>
+          <input type="text" id="examTitle" placeholder="e.g., Math Quiz">
+        </div>
+        <div>
+          <label>Duration (minutes)</label>
+          <input type="number" id="examDuration" min="1" value="30">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label><input type="checkbox" id="requireName" checked> Require student name</label>
+        </div>
+        <div>
+          <label><input type="checkbox" id="requireId"> Require student ID</label>
+        </div>
+      </div>
+      <button class="btn-primary" onclick="createExam()">Create Exam</button>
+      <p id="createMsg" style="margin-top:10px;color:green;"></p>
+    </div>
 
-    <h3 style="margin-top:20px;">Add Question</h3>
-    <input type="text" id="qText" placeholder="Question text">
-    <div class="row">
-      <input type="text" id="optA" placeholder="Option A">
-      <input type="text" id="optB" placeholder="Option B">
+    <!-- EXAM LIST -->
+    <div class="card">
+      <h2>Your Exams</h2>
+      <ul class="exam-list" id="examList"></ul>
+      <p id="noExams" class="hidden">No exams yet. Create one above.</p>
     </div>
-    <div class="row">
-      <input type="text" id="optC" placeholder="Option C">
-      <input type="text" id="optD" placeholder="Option D">
+
+    <!-- QUESTION MANAGEMENT -->
+    <div class="card hidden" id="questionSection">
+      <h2>Questions for <span id="selectedExamTitle"></span></h2>
+      <ul class="question-list" id="questionList"></ul>
+
+      <h3 style="margin-top:20px;">Add Question</h3>
+      <input type="text" id="qText" placeholder="Question text">
+      <div class="row">
+        <input type="text" id="optA" placeholder="Option A">
+        <input type="text" id="optB" placeholder="Option B">
+      </div>
+      <div class="row">
+        <input type="text" id="optC" placeholder="Option C">
+        <input type="text" id="optD" placeholder="Option D">
+      </div>
+      <div>
+        <label>Correct Option</label>
+        <select id="correctOption">
+          <option value="A">A</option>
+          <option value="B">B</option>
+          <option value="C">C</option>
+          <option value="D">D</option>
+        </select>
+      </div>
+      <button class="btn-success" onclick="addQuestion()">Add Question</button>
+      <p id="qMsg" style="margin-top:10px;"></p>
     </div>
-    <div>
-      <label>Correct Option</label>
-      <select id="correctOption">
-        <option value="A">A</option>
-        <option value="B">B</option>
-        <option value="C">C</option>
-        <option value="D">D</option>
-      </select>
-    </div>
-    <button class="btn-success" onclick="addQuestion()">Add Question</button>
-    <p id="qMsg" style="margin-top:10px;"></p>
   </div>
 </div>
 
 <script>
   const API = '/api';
+  let token = localStorage.getItem('token');
+  let authMode = 'login'; // 'login' or 'register'
   let selectedExamId = null;
 
-  // Load exams on page load
-  window.addEventListener('DOMContentLoaded', loadExams);
+  // On page load
+  if (token) {
+    showMainPanel();
+    loadExams();
+  } else {
+    showAuth();
+  }
+
+  function showAuth() {
+    document.getElementById('authSection').classList.remove('hidden');
+    document.getElementById('mainPanel').classList.add('hidden');
+  }
+
+  function showMainPanel() {
+    document.getElementById('authSection').classList.add('hidden');
+    document.getElementById('mainPanel').classList.remove('hidden');
+    // set display username (from token? better to decode or store on login)
+    const username = localStorage.getItem('username') || 'Teacher';
+    document.getElementById('displayUsername').textContent = username;
+  }
+
+  function toggleAuthMode() {
+    authMode = authMode === 'login' ? 'register' : 'login';
+    document.getElementById('authTitle').textContent = authMode === 'login' ? 'Login' : 'Register';
+    document.getElementById('authError').textContent = '';
+    document.querySelector('#authSection button.btn-success').textContent =
+      authMode === 'login' ? 'Switch to Register' : 'Switch to Login';
+  }
+
+  async function handleLogin() {
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value;
+    const errorEl = document.getElementById('authError');
+
+    if (!username || !password) {
+      errorEl.textContent = 'Please fill all fields.';
+      return;
+    }
+
+    const url = authMode === 'login' ? `${API}/auth/login` : `${API}/auth/register`;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        errorEl.textContent = data.error || 'Authentication failed';
+        return;
+      }
+
+      if (authMode === 'login') {
+        token = data.token;
+        localStorage.setItem('token', token);
+        localStorage.setItem('username', username);
+        showMainPanel();
+        loadExams();
+        document.getElementById('username').value = '';
+        document.getElementById('password').value = '';
+      } else {
+        // Registration successful, switch to login
+        authMode = 'login';
+        document.getElementById('authTitle').textContent = 'Login';
+        document.querySelector('#authSection button.btn-success').textContent = 'Switch to Register';
+        errorEl.textContent = 'Registration successful! Please login.';
+        errorEl.style.color = 'green';
+        document.getElementById('password').value = '';
+      }
+    } catch (err) {
+      errorEl.textContent = 'Network error';
+    }
+  }
+
+  function logout() {
+    localStorage.removeItem('token');
+    localStorage.removeItem('username');
+    token = null;
+    showAuth();
+    selectedExamId = null;
+    document.getElementById('questionSection').classList.add('hidden');
+  }
+
+  // All API calls now include Authorization header
+  async function authFetch(url, options = {}) {
+    if (!token) throw new Error('Not authenticated');
+    const headers = {
+      ...options.headers,
+      'Authorization': `Bearer ${token}`
+    };
+    return fetch(url, { ...options, headers });
+  }
 
   async function loadExams() {
     try {
-      const res = await fetch(`${API}/exams`);
+      const res = await authFetch(`${API}/exams`);
+      if (res.status === 401) { logout(); return; }
       const exams = await res.json();
       const list = document.getElementById('examList');
       const noExams = document.getElementById('noExams');
@@ -187,7 +302,7 @@
         });
       }
     } catch (err) {
-      console.error('Failed to load exams', err);
+      console.error(err);
     }
   }
 
@@ -205,7 +320,7 @@
     }
 
     try {
-      const res = await fetch(`${API}/exams`, {
+      const res = await authFetch(`${API}/exams`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, duration_minutes: duration, require_name, require_student_id })
@@ -216,7 +331,8 @@
         document.getElementById('examTitle').value = '';
         document.getElementById('examDuration').value = 30;
         loadExams();
-      } else {
+      } else if (res.status === 401) { logout(); }
+      else {
         const err = await res.json();
         msg.textContent = '❌ ' + (err.error || 'Failed');
         msg.style.color = 'red';
@@ -229,11 +345,12 @@
 
   async function selectExam(id) {
     selectedExamId = id;
-    loadExams(); // refresh to show selection highlight
+    loadExams(); // highlight
     document.getElementById('questionSection').classList.remove('hidden');
 
     try {
-      const res = await fetch(`${API}/exams/${id}`);
+      const res = await authFetch(`${API}/exams/${id}`);
+      if (res.status === 401) { logout(); return; }
       const exam = await res.json();
       document.getElementById('selectedExamTitle').textContent = exam.title;
       renderQuestions(exam.questions);
@@ -277,7 +394,7 @@
     }
 
     try {
-      const res = await fetch(`${API}/exams/${selectedExamId}/questions`, {
+      const res = await authFetch(`${API}/exams/${selectedExamId}/questions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, option_a, option_b, option_c, option_d, correct_option })
@@ -285,15 +402,14 @@
       if (res.ok) {
         msg.textContent = '✅ Question added!';
         msg.style.color = 'green';
-        // Clear inputs
         document.getElementById('qText').value = '';
         document.getElementById('optA').value = '';
         document.getElementById('optB').value = '';
         document.getElementById('optC').value = '';
         document.getElementById('optD').value = '';
-        // Reload exam to show new question
         selectExam(selectedExamId);
-      } else {
+      } else if (res.status === 401) { logout(); }
+      else {
         const err = await res.json();
         msg.textContent = '❌ ' + (err.error || 'Failed');
         msg.style.color = 'red';
@@ -307,7 +423,8 @@
   async function deleteExam(id) {
     if (!confirm('Delete this exam and all its questions/submissions?')) return;
     try {
-      await fetch(`${API}/exams/${id}`, { method: 'DELETE' });
+      const res = await authFetch(`${API}/exams/${id}`, { method: 'DELETE' });
+      if (res.status === 401) { logout(); return; }
       if (selectedExamId === id) {
         selectedExamId = null;
         document.getElementById('questionSection').classList.add('hidden');
@@ -321,8 +438,9 @@
   async function deleteQuestion(qId) {
     if (!confirm('Delete this question?')) return;
     try {
-      await fetch(`${API}/questions/${qId}`, { method: 'DELETE' });
-      selectExam(selectedExamId); // refresh list
+      const res = await authFetch(`${API}/questions/${qId}`, { method: 'DELETE' });
+      if (res.status === 401) { logout(); return; }
+      selectExam(selectedExamId);
     } catch (err) {
       console.error(err);
     }

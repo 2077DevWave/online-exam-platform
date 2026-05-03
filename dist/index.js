@@ -7,17 +7,20 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const path_1 = __importDefault(require("path"));
 const database_1 = require("./database");
+const auth_1 = __importDefault(require("./routes/auth"));
 const teacher_1 = __importDefault(require("./routes/teacher"));
-const student_1 = __importDefault(require("./routes/student")); // <-- import
+const student_1 = __importDefault(require("./routes/student"));
 const app = (0, express_1.default)();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 app.use(express_1.default.json());
 app.use(express_1.default.static(path_1.default.join(__dirname, '..', 'public')));
-// Teacher API
+// Auth routes (public)
+app.use('/api', auth_1.default);
+// Teacher routes (protected)
 app.use('/api', teacher_1.default);
-// Student API
-app.use('/api', student_1.default); // <-- mount
-// Dynamic exam page: any /exam/xxx serves exam.html
+// Student routes (public)
+app.use('/api', student_1.default);
+// Dynamic exam page
 app.get('/exam/:id', (req, res) => {
     res.sendFile(path_1.default.join(__dirname, '..', 'public', 'exam.html'));
 });
@@ -27,8 +30,8 @@ app.get('/api/health', (req, res) => {
 async function start() {
     await (0, database_1.getDb)();
     console.log('Database ready.');
-    app.listen(PORT, '0.0.0.0', () => {
-        console.log(`Server running on http://0.0.0.0:${PORT}`);
+    app.listen(PORT, () => {
+        console.log(`Server running on http://localhost:${PORT}`);
     });
 }
 start().catch(console.error);
