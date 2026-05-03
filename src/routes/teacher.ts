@@ -8,30 +8,37 @@ const router = Router();
 // All routes in this router require authentication
 router.use(authMiddleware);
 
-// POST /api/exams
+// POST /api/exams (updated to include allow_multiple_submissions)
 router.post('/exams', async (req: AuthRequest, res: Response) => {
   try {
     const teacherId = req.teacherId!;
-    const { title, duration_minutes, require_name = true, require_student_id = false } = req.body;
+    const { title, duration_minutes, require_name = true, require_student_id = false, allow_multiple_submissions = true } = req.body;
     if (!title || !duration_minutes) {
       return res.status(400).json({ error: 'Title and duration_minutes are required.' });
     }
 
     const examId = await insertRow(
-      `INSERT INTO exams (teacher_id, title, duration_minutes, require_name, require_student_id)
-       VALUES (?, ?, ?, ?, ?)`,
-      [teacherId, title, duration_minutes, require_name ? 1 : 0, require_student_id ? 1 : 0]
+      `INSERT INTO exams (teacher_id, title, duration_minutes, require_name, require_student_id, allow_multiple_submissions)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [teacherId, title, duration_minutes, require_name ? 1 : 0, require_student_id ? 1 : 0, allow_multiple_submissions ? 1 : 0]
     );
     saveDb();
 
-    res.status(201).json({ id: examId, title, duration_minutes, require_name, require_student_id });
+    res.status(201).json({
+      id: examId,
+      title,
+      duration_minutes,
+      require_name,
+      require_student_id,
+      allow_multiple_submissions
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// GET /api/exams – only teacher's exams
+// GET /api/exams – returns all fields
 router.get('/exams', async (req: AuthRequest, res: Response) => {
   try {
     const teacherId = req.teacherId!;
@@ -39,9 +46,7 @@ router.get('/exams', async (req: AuthRequest, res: Response) => {
     const stmt = db.prepare('SELECT * FROM exams WHERE teacher_id = ? ORDER BY created_at DESC');
     stmt.bind([teacherId]);
     const exams: any[] = [];
-    while (stmt.step()) {
-      exams.push(stmt.getAsObject());
-    }
+    while (stmt.step()) exams.push(stmt.getAsObject());
     stmt.free();
     res.json(exams);
   } catch (err) {
@@ -50,7 +55,7 @@ router.get('/exams', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// GET /api/exams/:id – only if belongs to teacher
+// GET /api/exams/:id – returns full exam with questions
 router.get('/exams/:id', async (req: AuthRequest, res: Response) => {
   try {
     const teacherId = req.teacherId!;
@@ -60,24 +65,64 @@ router.get('/exams/:id', async (req: AuthRequest, res: Response) => {
     const examStmt = db.prepare('SELECT * FROM exams WHERE id = ? AND teacher_id = ?');
     examStmt.bind([examId, teacherId]);
     let exam: any = null;
-    if (examStmt.step()) {
-      exam = examStmt.getAsObject();
-    }
+    if (examStmt.step()) exam = examStmt.getAsObject();
     examStmt.free();
-
-    if (!exam) {
-      return res.status(404).json({ error: 'Exam not found' });
-    }
+    if (!exam) return res.status(404).json({ error: 'Exam not found' });
 
     const qStmt = db.prepare('SELECT * FROM questions WHERE exam_id = ? ORDER BY id');
     qStmt.bind([examId]);
     const questions: any[] = [];
-    while (qStmt.step()) {
-      questions.push(qStmt.getAsObject());
-    }
+    while (qStmt.step()) questions.push(qStmt.getAsObject());
     qStmt.free();
 
     exam.questions = questions;
+    res.json(exam);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/exams/:id – update exam settings
+router.put('/exams/:id', async (req: AuthRequest, res: Response) => {
+  try {
+    const teacherId = req.teacherId!;
+    const examId = parseInt(String(req.params.id), 10);
+    const db = await getDb();
+
+    // Verify ownership
+    const check = db.prepare('SELECT id FROM exams WHERE id = ? AND teacher_id = ?');
+    check.bind([examId, teacherId]);
+    if (!check.step()) {
+      check.free();
+      return res.status(404).json({ error: 'Exam not found' });
+    }
+    check.free();
+
+    const { title, duration_minutes, require_name, require_student_id, allow_multiple_submissions } = req.body;
+
+    // Build dynamic update
+    const fields: string[] = [];
+    const params: any[] = [];
+    if (title !== undefined) { fields.push('title = ?'); params.push(title); }
+    if (duration_minutes !== undefined) { fields.push('duration_minutes = ?'); params.push(duration_minutes); }
+    if (require_name !== undefined) { fields.push('require_name = ?'); params.push(require_name ? 1 : 0); }
+    if (require_student_id !== undefined) { fields.push('require_student_id = ?'); params.push(require_student_id ? 1 : 0); }
+    if (allow_multiple_submissions !== undefined) { fields.push('allow_multiple_submissions = ?'); params.push(allow_multiple_submissions ? 1 : 0); }
+
+    if (fields.length > 0) {
+      params.push(examId);
+      const sql = `UPDATE exams SET ${fields.join(', ')} WHERE id = ?`;
+      db.run(sql, params);
+      saveDb();
+    }
+
+    // Return updated exam
+    const updated = db.prepare('SELECT * FROM exams WHERE id = ?');
+    updated.bind([examId]);
+    updated.step();
+    const exam = updated.getAsObject();
+    updated.free();
     res.json(exam);
   } catch (err) {
     console.error(err);

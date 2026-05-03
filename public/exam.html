@@ -68,7 +68,6 @@
 </head>
 <body>
 <div class="container" id="app">
-  <!-- START SCREEN -->
   <div id="startScreen" class="card">
     <h1 id="examTitle">Loading...</h1>
     <p id="examInfo"></p>
@@ -83,11 +82,10 @@
       </div>
       <p class="error" id="startError"></p>
     </div>
-    <button onclick="startExam()">Start Exam</button>
+    <button id="startBtn" onclick="startExam()">Start Exam</button>
     <p style="margin-top:12px;"><a href="teacher.html">Teacher Panel</a></p>
   </div>
 
-  <!-- EXAM SCREEN -->
   <div id="examScreen" class="hidden">
     <div id="timer">00:00</div>
     <div id="questionsContainer"></div>
@@ -95,7 +93,6 @@
     <p class="error" id="examError"></p>
   </div>
 
-  <!-- RESULT SCREEN -->
   <div id="resultScreen" class="hidden card">
     <h2>Exam Submitted</h2>
     <div class="score" id="resultText"></div>
@@ -117,17 +114,15 @@
   let startTime = null;
   let timeLeft = 0;
 
-  // Load exam info from the PUBLIC endpoint
   async function loadExam() {
     try {
-      // CHANGED: use /public/exams/ instead of /exams/
       const res = await fetch(`${API}/public/exams/${examId}`);
       if (!res.ok) throw new Error('Exam not found');
       exam = await res.json();
       document.getElementById('examTitle').textContent = exam.title;
       document.getElementById('examInfo').textContent =
         `${exam.questions.length} questions · ${exam.duration_minutes} minutes`;
-      
+
       if (exam.require_name) {
         document.getElementById('nameField').classList.remove('hidden');
       }
@@ -139,11 +134,24 @@
     }
   }
 
-  function startExam() {
+  async function checkAlreadySubmitted() {
+    const name = document.getElementById('studentName')?.value.trim() || '';
+    const studentId = document.getElementById('studentId')?.value.trim() || '';
+    try {
+      const res = await fetch(`${API}/public/exams/${examId}/already-submitted?name=${encodeURIComponent(name)}&student_id=${encodeURIComponent(studentId)}`);
+      if (!res.ok) return false;
+      const data = await res.json();
+      return data.submitted === true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  async function startExam() {
     const nameField = document.getElementById('studentName');
     const idField = document.getElementById('studentId');
     const errorEl = document.getElementById('startError');
-    
+
     if (exam.require_name && !nameField.value.trim()) {
       errorEl.textContent = 'Please enter your name.';
       return;
@@ -153,10 +161,20 @@
       return;
     }
 
+    // Check if already submitted (only if exam restricts multiple)
+    if (!exam.allow_multiple_submissions) {
+      const already = await checkAlreadySubmitted();
+      if (already) {
+        errorEl.textContent = 'You have already submitted this exam and cannot take it again.';
+        document.getElementById('startBtn').disabled = true;
+        return;
+      }
+    }
+
     document.getElementById('startScreen').classList.add('hidden');
     document.getElementById('examScreen').classList.remove('hidden');
 
-    // Build questions HTML (no correct_option exposed)
+    // Build questions
     let html = '';
     exam.questions.forEach((q, i) => {
       html += `
@@ -175,7 +193,6 @@
     });
     document.getElementById('questionsContainer').innerHTML = html;
 
-    // Start timer
     timeLeft = exam.duration_minutes * 60;
     startTime = new Date().toISOString();
     updateTimerDisplay();
@@ -199,16 +216,12 @@
 
   async function submitExam() {
     if (timerInterval) clearInterval(timerInterval);
-
     const submitBtn = document.getElementById('submitBtn');
     submitBtn.disabled = true;
 
     const answers = exam.questions.map(q => {
       const selected = document.querySelector(`input[name="q_${q.id}"]:checked`);
-      return {
-        question_id: q.id,
-        selected_option: selected ? selected.value : null
-      };
+      return { question_id: q.id, selected_option: selected ? selected.value : null };
     });
 
     const payload = {
@@ -216,7 +229,7 @@
       student_name: document.getElementById('studentName')?.value || null,
       student_id: document.getElementById('studentId')?.value || null,
       started_at: startTime,
-      answers: answers
+      answers
     };
 
     try {
@@ -244,7 +257,6 @@
     }
   }
 
-  // Load exam on page load
   loadExam();
 </script>
 </body>

@@ -49,6 +49,59 @@ router.get('/public/exams/:id', async (req: Request, res: Response) => {
   }
 });
 
+// GET /public/exams/:id/already-submitted
+router.get('/public/exams/:id/already-submitted', async (req: Request, res: Response) => {
+  try {
+    const examId = parseInt(String(req.params.id), 10);
+    const name = req.query.name as string || '';
+    const studentId = req.query.student_id as string || '';
+
+    const db = await getDb();
+
+    // Check if exam allows multiple submissions
+    const examStmt = db.prepare('SELECT allow_multiple_submissions, require_name, require_student_id FROM exams WHERE id = ?');
+    examStmt.bind([examId]);
+    if (!examStmt.step()) {
+      examStmt.free();
+      return res.status(404).json({ error: 'Exam not found' });
+    }
+    const exam = examStmt.getAsObject() as any;
+    examStmt.free();
+
+    if (exam.allow_multiple_submissions) {
+      return res.json({ submitted: false }); // multiple allowed, no need to check
+    }
+
+    // Build condition based on what's required
+    let condition = 'exam_id = ?';
+    const params: any[] = [examId];
+    if (exam.require_name && name) {
+      condition += ' AND student_name = ?';
+      params.push(name);
+    }
+    if (exam.require_student_id && studentId) {
+      condition += ' AND student_id = ?';
+      params.push(studentId);
+    }
+
+    // If no identifier available, we can't check – assume not submitted
+    if ((exam.require_name && !name) || (exam.require_student_id && !studentId)) {
+      return res.json({ submitted: false }); // can't determine
+    }
+
+    const stmt = db.prepare(`SELECT COUNT(*) as cnt FROM submissions WHERE ${condition}`);
+    stmt.bind(params);
+    stmt.step();
+    const row = stmt.getAsObject() as any;
+    stmt.free();
+
+    res.json({ submitted: row.cnt > 0 });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 /**
  * POST /api/submissions
  * Submit an exam attempt
@@ -71,15 +124,36 @@ router.post('/submissions', async (req: Request, res: Response) => {
 
     const db = await getDb();
 
-    // Check exam exists and fetch its questions
+    // Fetch exam
     const examStmt = db.prepare('SELECT * FROM exams WHERE id = ?');
     examStmt.bind([exam_id]);
-    if (!examStmt.step()) {
-      examStmt.free();
-      return res.status(404).json({ error: 'Exam not found' });
-    }
-    const exam = examStmt.getAsObject();
+    if (!examStmt.step()) { examStmt.free(); return res.status(404).json({ error: 'Exam not found' }); }
+    const exam = examStmt.getAsObject() as any;
     examStmt.free();
+
+    // DUPLICATE CHECK
+    if (!exam.allow_multiple_submissions) {
+      let dupCondition = 'exam_id = ?';
+      const dupParams: any[] = [exam_id];
+      if (exam.require_name && student_name) {
+        dupCondition += ' AND student_name = ?';
+        dupParams.push(student_name);
+      }
+      if (exam.require_student_id && student_id) {
+        dupCondition += ' AND student_id = ?';
+        dupParams.push(student_id);
+      }
+      if ((exam.require_name && student_name) || (exam.require_student_id && student_id)) {
+        const dupStmt = db.prepare(`SELECT COUNT(*) as cnt FROM submissions WHERE ${dupCondition}`);
+        dupStmt.bind(dupParams);
+        dupStmt.step();
+        const cnt = (dupStmt.getAsObject() as any).cnt;
+        dupStmt.free();
+        if (cnt > 0) {
+          return res.status(409).json({ error: 'You have already submitted this exam.' });
+        }
+      }
+    }
 
     // Fetch all questions for this exam
     const qStmt = db.prepare('SELECT id, correct_option FROM questions WHERE exam_id = ?');

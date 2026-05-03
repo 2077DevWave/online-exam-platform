@@ -12,7 +12,6 @@ export async function getDb(): Promise<Database> {
 
   const SQL = await initSqlJs();
 
-  // Ensure the directory exists
   const dir = path.dirname(DB_PATH);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -21,9 +20,15 @@ export async function getDb(): Promise<Database> {
   if (fs.existsSync(DB_PATH)) {
     const fileBuffer = fs.readFileSync(DB_PATH);
     db = new SQL.Database(fileBuffer);
+
+    // Migration: add column if it doesn't exist
+    try {
+      db.run(`ALTER TABLE exams ADD COLUMN allow_multiple_submissions INTEGER DEFAULT 1`);
+    } catch (e) {
+      // column already exists – ignore
+    }
   } else {
     db = new SQL.Database();
-    // Core tables
     db.run(`
       CREATE TABLE IF NOT EXISTS teachers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,6 +44,7 @@ export async function getDb(): Promise<Database> {
         duration_minutes INTEGER NOT NULL,
         require_name BOOLEAN DEFAULT 1,
         require_student_id BOOLEAN DEFAULT 0,
+        allow_multiple_submissions BOOLEAN DEFAULT 1,
         created_at TEXT DEFAULT (datetime('now')),
         FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE
       );
@@ -77,7 +83,6 @@ export async function getDb(): Promise<Database> {
         FOREIGN KEY (question_id) REFERENCES questions(id)
       );
     `);
-    // Save initial empty DB
     saveDb();
   }
 
@@ -96,7 +101,6 @@ export function saveDb() {
   }
 }
 
-// Helper to get last inserted row id
 export async function insertRow(sql: string, params: any[]): Promise<number> {
   const db = await getDb();
   db.run(sql, params);
@@ -107,7 +111,6 @@ export async function insertRow(sql: string, params: any[]): Promise<number> {
   throw new Error('Insert failed');
 }
 
-// Periodic save
 setInterval(saveDb, 30_000);
 process.on('exit', saveDb);
 process.on('SIGINT', () => { saveDb(); process.exit(); });
