@@ -24,6 +24,14 @@ router.get('/public/exams/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Exam not published yet' });
     }
 
+    const now = new Date().toISOString();
+    if (exam.start_time && now < exam.start_time) {
+      return res.status(403).json({ error: 'Exam has not started yet. It will be available at ' + exam.start_time });
+    }
+    if (exam.end_time && now > exam.end_time) {
+      return res.status(403).json({ error: 'Exam has already ended.' });
+    }
+
     // Check if exam has pre-defined students
     const sStmt = db.prepare('SELECT COUNT(*) as cnt FROM exam_students WHERE exam_id = ?');
     sStmt.bind([examId]);

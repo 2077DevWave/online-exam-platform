@@ -5,6 +5,46 @@ import { AuthRequest } from '../../middleware/auth';
 
 const router = Router();
 
+// GET /exams/:id/submissions/export
+router.get('/exams/:id/submissions/export', async (req: AuthRequest, res: Response) => {
+  try {
+    const teacherId = req.teacherId!;
+    const examId = parseInt(String(req.params.id), 10);
+    const db = await getDb();
+
+    // Verify ownership
+    const examStmt = db.prepare('SELECT id, title FROM exams WHERE id = ? AND teacher_id = ?');
+    examStmt.bind([examId, teacherId]);
+    if (!examStmt.step()) { examStmt.free(); return res.status(404).json({ error: 'Exam not found' }); }
+    const examTitle = (examStmt.getAsObject() as any).title;
+    examStmt.free();
+
+    const subStmt = db.prepare(`
+      SELECT s.id, s.student_name, s.student_id, s.score, s.total_questions, s.started_at, s.finished_at
+      FROM submissions s
+      WHERE s.exam_id = ?
+      ORDER BY s.finished_at DESC
+    `);
+    subStmt.bind([examId]);
+    const subs: any[] = [];
+    while (subStmt.step()) subs.push(subStmt.getAsObject());
+    subStmt.free();
+
+    // Build CSV
+    let csv = 'Student Name,Student ID,Score (%),Correct,Total,Started,Finished\n';
+    subs.forEach(sub => {
+      csv += `"${sub.student_name || ''}","${sub.student_id || ''}",${sub.score.toFixed(1)},"${Math.round(sub.score * sub.total_questions / 100)}","${sub.total_questions}","${sub.started_at}","${sub.finished_at}"\n`;
+    });
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="submissions_${examTitle.replace(/[^a-z0-9]/gi,'_')}.csv"`);
+    res.send(csv);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // GET /exams/:id/submissions
 router.get('/exams/:id/submissions', async (req: AuthRequest, res: Response) => {
   try {

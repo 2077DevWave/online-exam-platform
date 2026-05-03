@@ -14,7 +14,8 @@ router.post('/exams', async (req: AuthRequest, res: Response) => {
       require_name = true, require_student_id = false,
       allow_multiple_submissions = true,
       shuffle_questions = true, shuffle_options = true,
-      status = 'published', password
+      status = 'published', password,
+      start_time, end_time   // <-- ADD
     } = req.body;
 
     if (!title || !duration_minutes) {
@@ -25,12 +26,19 @@ router.post('/exams', async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'status must be draft or published' });
     }
 
+    if (start_time && isNaN(Date.parse(start_time))) {
+      return res.status(400).json({ error: 'Invalid start_time format' });
+    }
+    if (end_time && isNaN(Date.parse(end_time))) {
+      return res.status(400).json({ error: 'Invalid end_time format' });
+    }
+
     const examId = await insertRow(
-      `INSERT INTO exams (teacher_id, title, duration_minutes, require_name, require_student_id, allow_multiple_submissions, shuffle_questions, shuffle_options, status, password)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO exams (teacher_id, title, duration_minutes, require_name, require_student_id, allow_multiple_submissions, shuffle_questions, shuffle_options, status, password, start_time, end_time)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [teacherId, title, duration_minutes, require_name ? 1 : 0, require_student_id ? 1 : 0,
-       allow_multiple_submissions ? 1 : 0, shuffle_questions ? 1 : 0, shuffle_options ? 1 : 0,
-       status, password || null]
+      allow_multiple_submissions ? 1 : 0, shuffle_questions ? 1 : 0, shuffle_options ? 1 : 0,
+      status, password || null, start_time || null, end_time || null]
     );
     saveDb();
 
@@ -130,10 +138,11 @@ router.put('/exams/:id', async (req: AuthRequest, res: Response) => {
 
     const {
       title, duration_minutes,
-      require_name, require_student_id,
-      allow_multiple_submissions,
-      shuffle_questions, shuffle_options,
-      status, password
+      require_name = true, require_student_id = false,
+      allow_multiple_submissions = true,
+      shuffle_questions = true, shuffle_options = true,
+      status = 'published', password,
+      start_time, end_time   // <-- ADD
     } = req.body;
 
     const fields: string[] = [];
@@ -151,6 +160,16 @@ router.put('/exams/:id', async (req: AuthRequest, res: Response) => {
       fields.push('status = ?'); params.push(status);
     }
     if (password !== undefined) { fields.push('password = ?'); params.push(password || null); }
+    if (start_time !== undefined) {
+    if (start_time && isNaN(Date.parse(start_time))) return res.status(400).json({ error: 'Invalid start_time' });
+      fields.push('start_time = ?');
+      params.push(start_time || null);
+    }
+    if (end_time !== undefined) {
+      if (end_time && isNaN(Date.parse(end_time))) return res.status(400).json({ error: 'Invalid end_time' });
+      fields.push('end_time = ?');
+      params.push(end_time || null);
+    }
 
     if (fields.length > 0) {
       params.push(examId);

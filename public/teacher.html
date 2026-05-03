@@ -26,7 +26,10 @@
   <div id="mainPanel" class="hidden">
     <div style="display:flex; justify-content:space-between; align-items:center;">
       <h2>Welcome, <span id="displayUsername"></span></h2>
-      <button class="btn-danger btn-sm" id="logoutBtn">Logout</button>
+      <div class="actions">
+        <button class="btn-sm btn-outline" id="changePasswordBtn">🔒 Change Password</button>
+        <button class="btn-danger btn-sm" id="logoutBtn">Logout</button>
+      </div>
     </div>
 
     <!-- CREATE EXAM -->
@@ -44,6 +47,8 @@
       <div class="row">
         <div><label><input type="checkbox" id="shuffleQuestions" checked> Shuffle questions</label></div>
         <div><label><input type="checkbox" id="shuffleOptions" checked> Shuffle options</label></div>
+      </div>
+      <div class="row">
         <div>
           <label>Status</label>
           <select id="examStatus">
@@ -52,6 +57,16 @@
           </select>
         </div>
         <div><label>Password (optional)</label><input type="text" id="examPassword" placeholder="Leave empty for none"></div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Available From (optional)</label>
+          <input type="datetime-local" id="examStartTime">
+        </div>
+        <div>
+          <label>Available Until (optional)</label>
+          <input type="datetime-local" id="examEndTime">
+        </div>
       </div>
       <button class="btn-primary" id="createExamBtn">Create Exam</button>
       <p id="createMsg" style="margin-top:10px;color:green;"></p>
@@ -62,6 +77,16 @@
       <h2>Your Exams</h2>
       <ul class="exam-list" id="examList"></ul>
       <p id="noExams" class="hidden">No exams yet. Create one above.</p>
+    </div>
+
+    <!-- QUESTION BANK -->
+    <div class="card" id="questionBankSection">
+      <h2>📚 Question Bank</h2>
+      <ul id="bankQuestionList" class="question-list"></ul>
+      <p id="noBankQuestions" class="hidden">No saved questions yet. Use "Save to Bank" when adding exam questions.</p>
+      <div id="bankCopyPanel" style="margin-top:12px;">
+        <p>Select an exam first to copy questions: <span id="bankTargetExam">none</span></p>
+      </div>
     </div>
 
     <!-- QUESTION MANAGEMENT -->
@@ -92,6 +117,9 @@
           <option value="D">D</option>
         </select>
       </div>
+      <div class="row">
+        <div><label><input type="checkbox" id="saveToBank"> Save this question to bank</label></div>
+      </div>
       <button class="btn-success" id="addQuestionBtn">Add Question</button>
       <p id="qMsg" style="margin-top:10px;"></p>
     </div>
@@ -109,6 +137,19 @@
       <tbody id="detailAnswers"></tbody>
     </table>
     <button id="closeModalBtn">Close</button>
+  </div>
+</div>
+
+<!-- MODAL for password change -->
+<div id="changePasswordModal" class="modal-overlay hidden">
+  <div class="modal" style="max-width:400px;">
+    <h2>Change Password</h2>
+    <input type="password" id="currentPassword" placeholder="Current password">
+    <input type="password" id="newPassword" placeholder="New password">
+    <input type="password" id="confirmPassword" placeholder="Confirm new password">
+    <p id="changePwdError" class="error"></p>
+    <button class="btn-primary" id="changePwdBtn">Change Password</button>
+    <button class="btn-sm" id="closeChangePwdBtn">Cancel</button>
   </div>
 </div>
 

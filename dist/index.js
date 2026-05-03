@@ -8,19 +8,17 @@ const express_1 = __importDefault(require("express"));
 const path_1 = __importDefault(require("path"));
 const database_1 = require("./database");
 const auth_1 = __importDefault(require("./routes/auth"));
-const teacher_1 = __importDefault(require("./routes/teacher"));
-const student_1 = __importDefault(require("./routes/student"));
+const student_1 = __importDefault(require("./routes/student")); // student/index.ts
+const teacher_1 = __importDefault(require("./routes/teacher")); // teacher/index.ts
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 3000;
 app.use(express_1.default.json());
 app.use(express_1.default.static(path_1.default.join(__dirname, '..', 'public')));
-// Auth routes (public)
+// Public routes
 app.use('/api', auth_1.default);
-// Teacher routes (protected)
+app.use('/api', student_1.default); // no auth
+// Protected routes (auth applied inside teacher/index.ts)
 app.use('/api', teacher_1.default);
-// Student routes (public)
-app.use('/api', student_1.default);
-// Dynamic exam page
 app.get('/exam/:id', (req, res) => {
     res.sendFile(path_1.default.join(__dirname, '..', 'public', 'exam.html'));
 });

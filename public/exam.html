@@ -115,6 +115,11 @@
     try {
       const res = await fetch(`${API}/public/exams/${examId}`);
       if (!res.ok) {
+        if (res.status === 403) {
+          const err = await res.json();
+          document.getElementById('startScreen').innerHTML = `<h2>${err.error}</h2>`;
+          return;
+        }
         document.getElementById('startScreen').innerHTML = '<h2>Exam not found or not published</h2>';
         return;
       }

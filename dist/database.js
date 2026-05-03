@@ -16,7 +16,6 @@ async function getDb() {
     if (db)
         return db;
     const SQL = await (0, sql_js_1.default)();
-    // Ensure the directory exists
     const dir = path_1.default.dirname(DB_PATH);
     if (!fs_1.default.existsSync(dir)) {
         fs_1.default.mkdirSync(dir, { recursive: true });
@@ -24,10 +23,33 @@ async function getDb() {
     if (fs_1.default.existsSync(DB_PATH)) {
         const fileBuffer = fs_1.default.readFileSync(DB_PATH);
         db = new SQL.Database(fileBuffer);
+        // Migrations for new columns and tables
+        const migrations = [
+            `ALTER TABLE exams ADD COLUMN start_time TEXT`,
+            `ALTER TABLE exams ADD COLUMN end_time TEXT`,
+            `CREATE TABLE IF NOT EXISTS question_bank (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        teacher_id INTEGER NOT NULL,
+        text TEXT NOT NULL,
+        option_a TEXT NOT NULL,
+        option_b TEXT NOT NULL,
+        option_c TEXT NOT NULL,
+        option_d TEXT NOT NULL,
+        correct_option TEXT CHECK(correct_option IN ('A','B','C','D')) NOT NULL,
+        tags TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE
+      )`
+        ];
+        for (const sql of migrations) {
+            try {
+                db.run(sql);
+            }
+            catch (e) { /* column/table may already exist */ }
+        }
     }
     else {
         db = new SQL.Database();
-        // Core tables
         db.run(`
       CREATE TABLE IF NOT EXISTS teachers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,6 +65,11 @@ async function getDb() {
         duration_minutes INTEGER NOT NULL,
         require_name BOOLEAN DEFAULT 1,
         require_student_id BOOLEAN DEFAULT 0,
+        allow_multiple_submissions BOOLEAN DEFAULT 1,
+        shuffle_questions BOOLEAN DEFAULT 1,
+        shuffle_options BOOLEAN DEFAULT 1,
+        status TEXT DEFAULT 'published' CHECK(status IN ('draft','published')),
+        password TEXT,
         created_at TEXT DEFAULT (datetime('now')),
         FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE
       );
@@ -80,8 +107,15 @@ async function getDb() {
         FOREIGN KEY (submission_id) REFERENCES submissions(id),
         FOREIGN KEY (question_id) REFERENCES questions(id)
       );
+
+      CREATE TABLE IF NOT EXISTS exam_students (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        exam_id INTEGER NOT NULL,
+        student_id TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        FOREIGN KEY (exam_id) REFERENCES exams(id) ON DELETE CASCADE
+      );
     `);
-        // Save initial empty DB
         saveDb();
     }
     return db;
@@ -97,7 +131,6 @@ function saveDb() {
         fs_1.default.writeFileSync(DB_PATH, buffer);
     }
 }
-// Helper to get last inserted row id
 async function insertRow(sql, params) {
     const db = await getDb();
     db.run(sql, params);
@@ -107,7 +140,6 @@ async function insertRow(sql, params) {
     }
     throw new Error('Insert failed');
 }
-// Periodic save
 setInterval(saveDb, 30000);
 process.on('exit', saveDb);
 process.on('SIGINT', () => { saveDb(); process.exit(); });

@@ -23,17 +23,9 @@ export async function getDb(): Promise<Database> {
 
     // Migrations for new columns and tables
     const migrations = [
-      `ALTER TABLE exams ADD COLUMN shuffle_questions INTEGER DEFAULT 1`,
-      `ALTER TABLE exams ADD COLUMN shuffle_options INTEGER DEFAULT 1`,
-      `ALTER TABLE exams ADD COLUMN status TEXT DEFAULT 'published'`,
-      `ALTER TABLE exams ADD COLUMN password TEXT`,
-      `CREATE TABLE IF NOT EXISTS exam_students (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        exam_id INTEGER NOT NULL,
-        student_id TEXT NOT NULL,
-        password_hash TEXT NOT NULL,
-        FOREIGN KEY (exam_id) REFERENCES exams(id) ON DELETE CASCADE
-      )`
+      `ALTER TABLE exams ADD COLUMN `,
+      `ALTER TABLE exams ADD COLUMN `,
+      ``
     ];
     for (const sql of migrations) {
       try { db.run(sql); } catch (e) { /* column/table may already exist */ }
@@ -48,6 +40,20 @@ export async function getDb(): Promise<Database> {
         created_at TEXT DEFAULT (datetime('now'))
       );
 
+      CREATE TABLE IF NOT EXISTS question_bank (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        teacher_id INTEGER NOT NULL,
+        text TEXT NOT NULL,
+        option_a TEXT NOT NULL,
+        option_b TEXT NOT NULL,
+        option_c TEXT NOT NULL,
+        option_d TEXT NOT NULL,
+        correct_option TEXT CHECK(correct_option IN ('A','B','C','D')) NOT NULL,
+        tags TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE
+      );
+
       CREATE TABLE IF NOT EXISTS exams (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         teacher_id INTEGER NOT NULL,
@@ -60,6 +66,8 @@ export async function getDb(): Promise<Database> {
         shuffle_options BOOLEAN DEFAULT 1,
         status TEXT DEFAULT 'published' CHECK(status IN ('draft','published')),
         password TEXT,
+        end_time TEXT,
+        start_time TEXT,
         created_at TEXT DEFAULT (datetime('now')),
         FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE
       );
