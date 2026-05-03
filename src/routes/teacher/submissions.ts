@@ -6,7 +6,7 @@ import { services } from '../../modules/composition';
 import { toErrorResponse } from '../../modules/shared/DomainError';
 
 const router = Router();
-const { teacherExamService } = services;
+const { teacherExamService, submissionService } = services;
 
 // GET /exams/:id/submissions/export
 router.get('/exams/:id/submissions/export', async (req: AuthRequest, res: Response) => {
@@ -101,12 +101,19 @@ router.get('/submissions/:id', async (req: AuthRequest, res: Response) => {
 
     // Get answers with question details
     const ansStmt = db.prepare(`
-      SELECT a.id, a.question_id, a.selected_option, a.is_correct,
-             q.text, q.option_a, q.option_b, q.option_c, q.option_d, q.correct_option
-      FROM answers a
-      JOIN questions q ON a.question_id = q.id
-      WHERE a.submission_id = ?
-      ORDER BY q.id
+      SELECT sa.id, sa.exam_question_id AS question_id, sa.selected_option, sa.is_correct,
+             qi.text, qi.correct_option,
+             MAX(CASE WHEN qio.option_key = 'A' THEN qio.option_text END) AS option_a,
+             MAX(CASE WHEN qio.option_key = 'B' THEN qio.option_text END) AS option_b,
+             MAX(CASE WHEN qio.option_key = 'C' THEN qio.option_text END) AS option_c,
+             MAX(CASE WHEN qio.option_key = 'D' THEN qio.option_text END) AS option_d
+      FROM submission_answers sa
+      JOIN exam_questions eq ON eq.id = sa.exam_question_id
+      JOIN question_items qi ON qi.id = eq.question_item_id
+      JOIN question_item_options qio ON qio.question_item_id = qi.id
+      WHERE sa.submission_id = ?
+      GROUP BY sa.id, sa.exam_question_id, sa.selected_option, sa.is_correct, qi.text, qi.correct_option
+      ORDER BY sa.exam_question_id
     `);
     ansStmt.bind([submissionId]);
     const answers: any[] = [];
@@ -115,6 +122,22 @@ router.get('/submissions/:id', async (req: AuthRequest, res: Response) => {
 
     submission.answers = answers;
     res.json(submission);
+  } catch (err) {
+    const mapped = toErrorResponse(err);
+    if (mapped.statusCode >= 500) console.error(err);
+    res.status(mapped.statusCode).json(mapped.body);
+  }
+});
+
+// POST /exams/:id/submissions/rescore
+router.post('/exams/:id/submissions/rescore', async (req: AuthRequest, res: Response) => {
+  try {
+    const teacherId = req.teacherId!;
+    const examId = parseInt(String(req.params.id), 10);
+
+    await teacherExamService.ensureOwnership(examId, teacherId);
+    const result = await submissionService.rescoreExamSubmissions(examId);
+    res.json(result);
   } catch (err) {
     const mapped = toErrorResponse(err);
     if (mapped.statusCode >= 500) console.error(err);

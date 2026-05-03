@@ -268,9 +268,22 @@ async function toggleSubmissions(examId) {
       else {
         const subs = await res.json();
         if (subs.length === 0) {
-          container.innerHTML = '<p>No submissions yet.</p>';
+          container.innerHTML = `
+            <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+              <button class="btn-sm btn-outline" id="rescore-${examId}">🔁 Rescore Submissions</button>
+              <small>Use after editing question answers.</small>
+            </div>
+            <p>No submissions yet.</p>
+          `;
+          document.getElementById(`rescore-${examId}`).addEventListener('click', () => rescoreSubmissions(examId));
         } else {
-          let html = '<button class="btn-sm btn-primary" style="margin-bottom:8px;" id="exportCSV-' + examId + '">📥 Export CSV</button><ul class="submission-list">';
+          let html = `
+            <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+              <button class="btn-sm btn-primary" id="exportCSV-${examId}">📥 Export CSV</button>
+              <button class="btn-sm btn-outline" id="rescore-${examId}">🔁 Rescore Submissions</button>
+            </div>
+            <ul class="submission-list">
+          `;
           subs.forEach(sub => {
             html += `<li class="submission-item">
               <div>
@@ -285,7 +298,8 @@ async function toggleSubmissions(examId) {
           });
           html += '</ul>';
           container.innerHTML = html;
-          document.getElementById('exportCSV-' + examId).addEventListener('click', () => exportCSV(examId));
+          document.getElementById(`exportCSV-${examId}`).addEventListener('click', () => exportCSV(examId));
+          document.getElementById(`rescore-${examId}`).addEventListener('click', () => rescoreSubmissions(examId));
           container.querySelectorAll('.detail-btn').forEach(btn => {
             btn.addEventListener('click', () => viewDetails(parseInt(btn.dataset.subId)));
           });
@@ -300,6 +314,26 @@ async function toggleSubmissions(examId) {
 
 function exportCSV(examId) {
   window.open(`${API}/exams/${examId}/submissions/export?token=${encodeURIComponent(teacherState.token)}`, '_blank');
+}
+
+async function rescoreSubmissions(examId) {
+  if (!confirm('Re-score all submissions for this exam using current correct answers?')) return;
+  try {
+    const res = await authFetch(`${API}/exams/${examId}/submissions/rescore`, {
+      method: 'POST'
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      alert(err.error || 'Failed to rescore submissions.');
+      return;
+    }
+    const data = await res.json();
+    alert(`Re-scored ${data.submissions_updated} submission(s).`);
+    await toggleSubmissions(examId);
+    await toggleSubmissions(examId);
+  } catch (_err) {
+    alert('Network error');
+  }
 }
 
 async function viewDetails(subId) {
@@ -429,13 +463,92 @@ async function selectExam(id) {
             <small>A: ${q.option_a} | B: ${q.option_b} | C: ${q.option_c} | D: ${q.option_d}</small>
             <span class="badge">Correct: ${q.correct_option}</span>
           </div>
-          <button class="btn-danger btn-sm delete-question-btn" data-q-id="${q.id}">Delete</button>
+          <div class="actions">
+            <button class="btn-outline btn-sm edit-question-btn" data-q-id="${q.id}">✏️ Edit</button>
+            <button class="btn-danger btn-sm delete-question-btn" data-q-id="${q.id}">Delete</button>
+          </div>
+        </div>
+        <div id="edit-question-${q.id}" class="hidden" style="margin-top:10px; padding:10px; border:1px solid #dce1e8; border-radius:6px; background:#fff;">
+          <input type="text" id="eqText-${q.id}" value="${q.text}" placeholder="Question text">
+          <div class="row">
+            <input type="text" id="eqA-${q.id}" value="${q.option_a}" placeholder="Option A">
+            <input type="text" id="eqB-${q.id}" value="${q.option_b}" placeholder="Option B">
+          </div>
+          <div class="row">
+            <input type="text" id="eqC-${q.id}" value="${q.option_c}" placeholder="Option C">
+            <input type="text" id="eqD-${q.id}" value="${q.option_d}" placeholder="Option D">
+          </div>
+          <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+            <label style="margin:0;">Correct:</label>
+            <select id="eqCorrect-${q.id}" style="width:auto; margin-bottom:0;">
+              <option value="A" ${q.correct_option === 'A' ? 'selected' : ''}>A</option>
+              <option value="B" ${q.correct_option === 'B' ? 'selected' : ''}>B</option>
+              <option value="C" ${q.correct_option === 'C' ? 'selected' : ''}>C</option>
+              <option value="D" ${q.correct_option === 'D' ? 'selected' : ''}>D</option>
+            </select>
+            <label style="margin:0;">
+              <input type="checkbox" id="eqRescore-${q.id}" checked>
+              Rescore submissions after save
+            </label>
+          </div>
+          <div class="actions">
+            <button class="btn-success btn-sm save-question-btn" data-q-id="${q.id}">Save</button>
+            <button class="btn-sm cancel-question-btn" data-q-id="${q.id}">Cancel</button>
+          </div>
         </div>
       `;
+      li.querySelector('.edit-question-btn').addEventListener('click', () => toggleQuestionEdit(q.id));
       li.querySelector('.delete-question-btn').addEventListener('click', () => deleteQuestion(q.id));
+      li.querySelector('.save-question-btn').addEventListener('click', () => saveQuestionEdit(q.id, id));
+      li.querySelector('.cancel-question-btn').addEventListener('click', () => toggleQuestionEdit(q.id));
       qList.appendChild(li);
     });
   } catch (err) { console.error(err); }
+}
+
+function toggleQuestionEdit(questionId) {
+  const panel = document.getElementById(`edit-question-${questionId}`);
+  if (panel) panel.classList.toggle('hidden');
+}
+
+async function saveQuestionEdit(questionId, examId) {
+  const text = document.getElementById(`eqText-${questionId}`).value.trim();
+  const option_a = document.getElementById(`eqA-${questionId}`).value.trim();
+  const option_b = document.getElementById(`eqB-${questionId}`).value.trim();
+  const option_c = document.getElementById(`eqC-${questionId}`).value.trim();
+  const option_d = document.getElementById(`eqD-${questionId}`).value.trim();
+  const correct_option = document.getElementById(`eqCorrect-${questionId}`).value;
+  const shouldRescore = document.getElementById(`eqRescore-${questionId}`).checked;
+
+  if (!text || !option_a || !option_b || !option_c || !option_d) {
+    alert('All question fields are required.');
+    return;
+  }
+
+  try {
+    const res = await authFetch(`${API}/questions/${questionId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, option_a, option_b, option_c, option_d, correct_option })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      alert(err.error || 'Failed to update question.');
+      return;
+    }
+
+    if (shouldRescore) {
+      const rescoreRes = await authFetch(`${API}/exams/${examId}/submissions/rescore`, { method: 'POST' });
+      if (!rescoreRes.ok) {
+        const err = await rescoreRes.json();
+        alert(`Question saved, but rescore failed: ${err.error || 'unknown error'}`);
+      }
+    }
+
+    await selectExam(examId);
+  } catch (_err) {
+    alert('Network error');
+  }
 }
 
 async function addQuestion() {

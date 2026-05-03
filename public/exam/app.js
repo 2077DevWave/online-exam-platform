@@ -9,7 +9,6 @@ if (!examId || Number.isNaN(examId)) {
 let exam = null;
 let examToken = null;
 let timerInterval = null;
-let startTime = null;
 let timeLeft = 0;
 let shuffledQuestions = [];
 
@@ -204,7 +203,6 @@ async function proceedToStart() {
   document.getElementById('examScreen').classList.remove('hidden');
 
   timeLeft = exam.duration_minutes * 60;
-  startTime = new Date().toISOString();
   updateTimerDisplay();
   timerInterval = setInterval(() => {
     timeLeft -= 1;
@@ -237,7 +235,7 @@ async function submitExam() {
 
   const student_name = document.getElementById('studentName')?.value || null;
   const student_id = document.getElementById('studentId')?.value || document.getElementById('studentIdInput')?.value || null;
-  const payload = { exam_id: examId, student_name, student_id, started_at: startTime, answers, exam_token: examToken };
+  const payload = { exam_id: examId, student_name, student_id, answers, exam_token: examToken };
 
   try {
     const res = await fetch(`${API}/submissions`, {

@@ -94,7 +94,19 @@ router.get('/exams/:id', async (req: AuthRequest, res: Response) => {
     if (!exam) return res.status(404).json({ error: 'Exam not found' });
 
     // Questions
-    const qStmt = db.prepare('SELECT * FROM questions WHERE exam_id = ? ORDER BY id');
+    const qStmt = db.prepare(`
+      SELECT eq.id, eq.exam_id, qi.text, qi.correct_option,
+             MAX(CASE WHEN qio.option_key = 'A' THEN qio.option_text END) AS option_a,
+             MAX(CASE WHEN qio.option_key = 'B' THEN qio.option_text END) AS option_b,
+             MAX(CASE WHEN qio.option_key = 'C' THEN qio.option_text END) AS option_c,
+             MAX(CASE WHEN qio.option_key = 'D' THEN qio.option_text END) AS option_d
+      FROM exam_questions eq
+      JOIN question_items qi ON qi.id = eq.question_item_id
+      JOIN question_item_options qio ON qio.question_item_id = qi.id
+      WHERE eq.exam_id = ?
+      GROUP BY eq.id, eq.exam_id, qi.text, qi.correct_option
+      ORDER BY eq.id
+    `);
     qStmt.bind([examId]);
     const questions: any[] = [];
     while (qStmt.step()) questions.push(qStmt.getAsObject());

@@ -18,6 +18,22 @@ export interface PublicExamView {
 }
 
 export class ExamAccessService {
+  private assertExamAvailability(exam: any): void {
+    const nowMs = Date.now();
+    if (exam.start_time) {
+      const startMs = Date.parse(exam.start_time);
+      if (!Number.isNaN(startMs) && nowMs < startMs) {
+        throw new DomainError(`Exam has not started yet. It will be available at ${exam.start_time}`, 403);
+      }
+    }
+    if (exam.end_time) {
+      const endMs = Date.parse(exam.end_time);
+      if (!Number.isNaN(endMs) && nowMs > endMs) {
+        throw new DomainError('Exam has already ended.', 403);
+      }
+    }
+  }
+
   async getPublicExam(examId: number): Promise<PublicExamView> {
     const db = await getDb();
     const examStmt = db.prepare(
@@ -37,13 +53,7 @@ export class ExamAccessService {
       throw new DomainError('Exam not published yet', 404);
     }
 
-    const now = new Date().toISOString();
-    if (exam.start_time && now < exam.start_time) {
-      throw new DomainError(`Exam has not started yet. It will be available at ${exam.start_time}`, 403);
-    }
-    if (exam.end_time && now > exam.end_time) {
-      throw new DomainError('Exam has already ended.', 403);
-    }
+    this.assertExamAvailability(exam);
 
     const sStmt = db.prepare('SELECT COUNT(*) as cnt FROM exam_students WHERE exam_id = ?');
     sStmt.bind([examId]);
@@ -52,7 +62,17 @@ export class ExamAccessService {
     sStmt.free();
 
     const qStmt = db.prepare(
-      'SELECT id, text, option_a, option_b, option_c, option_d FROM questions WHERE exam_id = ? ORDER BY id'
+      `SELECT eq.id, qi.text,
+              MAX(CASE WHEN qio.option_key = 'A' THEN qio.option_text END) AS option_a,
+              MAX(CASE WHEN qio.option_key = 'B' THEN qio.option_text END) AS option_b,
+              MAX(CASE WHEN qio.option_key = 'C' THEN qio.option_text END) AS option_c,
+              MAX(CASE WHEN qio.option_key = 'D' THEN qio.option_text END) AS option_d
+       FROM exam_questions eq
+       JOIN question_items qi ON qi.id = eq.question_item_id
+       JOIN question_item_options qio ON qio.question_item_id = qi.id
+       WHERE eq.exam_id = ?
+       GROUP BY eq.id, qi.text
+       ORDER BY eq.id`
     );
     qStmt.bind([examId]);
     const questions: any[] = [];
@@ -86,6 +106,7 @@ export class ExamAccessService {
     }
     const row = stmt.getAsObject() as any;
     stmt.free();
+    this.assertExamAvailability(row);
 
     if (!row.password || row.password !== password) {
       throw new DomainError('Incorrect password', 401);
@@ -95,6 +116,16 @@ export class ExamAccessService {
 
   async loginStudent(examId: number, studentId: string, password: string): Promise<string> {
     const db = await getDb();
+    const examStmt = db.prepare('SELECT start_time, end_time FROM exams WHERE id = ? AND status = "published"');
+    examStmt.bind([examId]);
+    if (!examStmt.step()) {
+      examStmt.free();
+      throw new DomainError('Exam not found', 404);
+    }
+    const exam = examStmt.getAsObject() as any;
+    examStmt.free();
+    this.assertExamAvailability(exam);
+
     const stmt = db.prepare('SELECT password_hash FROM exam_students WHERE exam_id = ? AND student_id = ?');
     stmt.bind([examId, studentId]);
     if (!stmt.step()) {
@@ -159,6 +190,10 @@ export class ExamAccessService {
     }
     const exam = examStmt.getAsObject() as any;
     examStmt.free();
+    if (exam.status !== 'published') {
+      throw new DomainError('Exam not published yet', 404);
+    }
+    this.assertExamAvailability(exam);
 
     const sStmt = db.prepare('SELECT COUNT(*) as cnt FROM exam_students WHERE exam_id = ?');
     sStmt.bind([examId]);
