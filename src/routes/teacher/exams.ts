@@ -1,46 +1,44 @@
 // src/routes/teacher/exams.ts
 import { Router, Response } from 'express';
-import { getDb, saveDb, insertRow } from '../../database';
+import { getDb, saveDb } from '../../database';
 import { AuthRequest } from '../../middleware/auth';
+import { services } from '../../modules/composition';
+import { toErrorResponse } from '../../modules/shared/DomainError';
 
 const router = Router();
+const { teacherExamService } = services;
 
 // POST /exams
 router.post('/exams', async (req: AuthRequest, res: Response) => {
   try {
     const teacherId = req.teacherId!;
     const {
-      title, duration_minutes,
-      require_name = true, require_student_id = false,
+      title,
+      duration_minutes,
+      require_name = true,
+      require_student_id = false,
       allow_multiple_submissions = true,
-      shuffle_questions = true, shuffle_options = true,
-      status = 'published', password,
-      start_time, end_time   // <-- ADD
+      shuffle_questions = true,
+      shuffle_options = true,
+      status = 'published',
+      password,
+      start_time,
+      end_time
     } = req.body;
 
-    if (!title || !duration_minutes) {
-      return res.status(400).json({ error: 'Title and duration_minutes are required.' });
-    }
-
-    if (!['draft','published'].includes(status)) {
-      return res.status(400).json({ error: 'status must be draft or published' });
-    }
-
-    if (start_time && isNaN(Date.parse(start_time))) {
-      return res.status(400).json({ error: 'Invalid start_time format' });
-    }
-    if (end_time && isNaN(Date.parse(end_time))) {
-      return res.status(400).json({ error: 'Invalid end_time format' });
-    }
-
-    const examId = await insertRow(
-      `INSERT INTO exams (teacher_id, title, duration_minutes, require_name, require_student_id, allow_multiple_submissions, shuffle_questions, shuffle_options, status, password, start_time, end_time)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [teacherId, title, duration_minutes, require_name ? 1 : 0, require_student_id ? 1 : 0,
-      allow_multiple_submissions ? 1 : 0, shuffle_questions ? 1 : 0, shuffle_options ? 1 : 0,
-      status, password || null, start_time || null, end_time || null]
-    );
-    saveDb();
+    const examId = await teacherExamService.createExam(teacherId, {
+      title,
+      duration_minutes,
+      require_name,
+      require_student_id,
+      allow_multiple_submissions,
+      shuffle_questions,
+      shuffle_options,
+      status,
+      password,
+      start_time,
+      end_time
+    });
 
     res.status(201).json({
       id: examId, title, duration_minutes, require_name, require_student_id,
@@ -48,8 +46,9 @@ router.post('/exams', async (req: AuthRequest, res: Response) => {
       password: !!password
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    const mapped = toErrorResponse(err);
+    if (mapped.statusCode >= 500) console.error(err);
+    res.status(mapped.statusCode).json(mapped.body);
   }
 });
 
@@ -74,8 +73,9 @@ router.get('/exams', async (req: AuthRequest, res: Response) => {
     });
     res.json(exams);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    const mapped = toErrorResponse(err);
+    if (mapped.statusCode >= 500) console.error(err);
+    res.status(mapped.statusCode).json(mapped.body);
   }
 });
 
@@ -119,8 +119,9 @@ router.get('/exams/:id', async (req: AuthRequest, res: Response) => {
 
     res.json(exam);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    const mapped = toErrorResponse(err);
+    if (mapped.statusCode >= 500) console.error(err);
+    res.status(mapped.statusCode).json(mapped.body);
   }
 });
 
@@ -130,11 +131,7 @@ router.put('/exams/:id', async (req: AuthRequest, res: Response) => {
     const teacherId = req.teacherId!;
     const examId = parseInt(String(req.params.id), 10);
     const db = await getDb();
-
-    const check = db.prepare('SELECT id FROM exams WHERE id = ? AND teacher_id = ?');
-    check.bind([examId, teacherId]);
-    if (!check.step()) { check.free(); return res.status(404).json({ error: 'Exam not found' }); }
-    check.free();
+    await teacherExamService.ensureOwnership(examId, teacherId);
 
     const {
       title, duration_minutes,
@@ -185,8 +182,9 @@ router.put('/exams/:id', async (req: AuthRequest, res: Response) => {
     exam.password = exam.password ? '****' : null;
     res.json(exam);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    const mapped = toErrorResponse(err);
+    if (mapped.statusCode >= 500) console.error(err);
+    res.status(mapped.statusCode).json(mapped.body);
   }
 });
 
@@ -200,8 +198,9 @@ router.delete('/exams/:id', async (req: AuthRequest, res: Response) => {
     saveDb();
     res.json({ success: true });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    const mapped = toErrorResponse(err);
+    if (mapped.statusCode >= 500) console.error(err);
+    res.status(mapped.statusCode).json(mapped.body);
   }
 });
 

@@ -2,8 +2,11 @@
 import { Router, Response } from 'express';
 import { getDb } from '../../database';
 import { AuthRequest } from '../../middleware/auth';
+import { services } from '../../modules/composition';
+import { toErrorResponse } from '../../modules/shared/DomainError';
 
 const router = Router();
+const { teacherExamService } = services;
 
 // GET /exams/:id/submissions/export
 router.get('/exams/:id/submissions/export', async (req: AuthRequest, res: Response) => {
@@ -12,12 +15,12 @@ router.get('/exams/:id/submissions/export', async (req: AuthRequest, res: Respon
     const examId = parseInt(String(req.params.id), 10);
     const db = await getDb();
 
-    // Verify ownership
-    const examStmt = db.prepare('SELECT id, title FROM exams WHERE id = ? AND teacher_id = ?');
-    examStmt.bind([examId, teacherId]);
-    if (!examStmt.step()) { examStmt.free(); return res.status(404).json({ error: 'Exam not found' }); }
-    const examTitle = (examStmt.getAsObject() as any).title;
-    examStmt.free();
+    await teacherExamService.ensureOwnership(examId, teacherId);
+    const titleStmt = db.prepare('SELECT title FROM exams WHERE id = ?');
+    titleStmt.bind([examId]);
+    titleStmt.step();
+    const examTitle = (titleStmt.getAsObject() as any).title;
+    titleStmt.free();
 
     const subStmt = db.prepare(`
       SELECT s.id, s.student_name, s.student_id, s.score, s.total_questions, s.started_at, s.finished_at
@@ -40,8 +43,9 @@ router.get('/exams/:id/submissions/export', async (req: AuthRequest, res: Respon
     res.setHeader('Content-Disposition', `attachment; filename="submissions_${examTitle.replace(/[^a-z0-9]/gi,'_')}.csv"`);
     res.send(csv);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    const mapped = toErrorResponse(err);
+    if (mapped.statusCode >= 500) console.error(err);
+    res.status(mapped.statusCode).json(mapped.body);
   }
 });
 
@@ -52,14 +56,7 @@ router.get('/exams/:id/submissions', async (req: AuthRequest, res: Response) => 
     const examId = parseInt(String(req.params.id), 10);
     const db = await getDb();
 
-    // Verify ownership
-    const examStmt = db.prepare('SELECT id FROM exams WHERE id = ? AND teacher_id = ?');
-    examStmt.bind([examId, teacherId]);
-    if (!examStmt.step()) {
-      examStmt.free();
-      return res.status(404).json({ error: 'Exam not found' });
-    }
-    examStmt.free();
+    await teacherExamService.ensureOwnership(examId, teacherId);
 
     const stmt = db.prepare(`
       SELECT id, student_name, student_id, score, total_questions, started_at, finished_at
@@ -73,8 +70,9 @@ router.get('/exams/:id/submissions', async (req: AuthRequest, res: Response) => 
 
     res.json(submissions);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    const mapped = toErrorResponse(err);
+    if (mapped.statusCode >= 500) console.error(err);
+    res.status(mapped.statusCode).json(mapped.body);
   }
 });
 
@@ -118,8 +116,9 @@ router.get('/submissions/:id', async (req: AuthRequest, res: Response) => {
     submission.answers = answers;
     res.json(submission);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    const mapped = toErrorResponse(err);
+    if (mapped.statusCode >= 500) console.error(err);
+    res.status(mapped.statusCode).json(mapped.body);
   }
 });
 

@@ -3,8 +3,11 @@ import { Router, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { getDb, saveDb } from '../../database';
 import { AuthRequest } from '../../middleware/auth';
+import { services } from '../../modules/composition';
+import { toErrorResponse } from '../../modules/shared/DomainError';
 
 const router = Router();
+const { teacherExamService } = services;
 
 // POST /exams/:id/students - add a student to exam
 router.post('/exams/:id/students', async (req: AuthRequest, res: Response) => {
@@ -19,11 +22,7 @@ router.post('/exams/:id/students', async (req: AuthRequest, res: Response) => {
 
     const db = await getDb();
 
-    // Verify exam ownership
-    const examStmt = db.prepare('SELECT id FROM exams WHERE id = ? AND teacher_id = ?');
-    examStmt.bind([examId, teacherId]);
-    if (!examStmt.step()) { examStmt.free(); return res.status(404).json({ error: 'Exam not found' }); }
-    examStmt.free();
+    await teacherExamService.ensureOwnership(examId, teacherId);
 
     // Check if student already exists
     const dupStmt = db.prepare('SELECT id FROM exam_students WHERE exam_id = ? AND student_id = ?');
@@ -38,8 +37,9 @@ router.post('/exams/:id/students', async (req: AuthRequest, res: Response) => {
 
     res.status(201).json({ student_id });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    const mapped = toErrorResponse(err);
+    if (mapped.statusCode >= 500) console.error(err);
+    res.status(mapped.statusCode).json(mapped.body);
   }
 });
 
@@ -50,11 +50,7 @@ router.get('/exams/:id/students', async (req: AuthRequest, res: Response) => {
     const examId = parseInt(String(req.params.id), 10);
     const db = await getDb();
 
-    // Verify ownership
-    const examStmt = db.prepare('SELECT id FROM exams WHERE id = ? AND teacher_id = ?');
-    examStmt.bind([examId, teacherId]);
-    if (!examStmt.step()) { examStmt.free(); return res.status(404).json({ error: 'Exam not found' }); }
-    examStmt.free();
+    await teacherExamService.ensureOwnership(examId, teacherId);
 
     const stmt = db.prepare('SELECT id, student_id FROM exam_students WHERE exam_id = ? ORDER BY student_id');
     stmt.bind([examId]);
@@ -63,8 +59,9 @@ router.get('/exams/:id/students', async (req: AuthRequest, res: Response) => {
     stmt.free();
     res.json(students);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    const mapped = toErrorResponse(err);
+    if (mapped.statusCode >= 500) console.error(err);
+    res.status(mapped.statusCode).json(mapped.body);
   }
 });
 
@@ -76,18 +73,15 @@ router.delete('/exams/:id/students/:studentId', async (req: AuthRequest, res: Re
     const studentId = String(req.params.studentId);
     const db = await getDb();
 
-    // Verify ownership
-    const examStmt = db.prepare('SELECT id FROM exams WHERE id = ? AND teacher_id = ?');
-    examStmt.bind([examId, teacherId]);
-    if (!examStmt.step()) { examStmt.free(); return res.status(404).json({ error: 'Exam not found' }); }
-    examStmt.free();
+    await teacherExamService.ensureOwnership(examId, teacherId);
 
     db.run('DELETE FROM exam_students WHERE exam_id = ? AND student_id = ?', [examId, studentId]);
     saveDb();
     res.json({ success: true });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    const mapped = toErrorResponse(err);
+    if (mapped.statusCode >= 500) console.error(err);
+    res.status(mapped.statusCode).json(mapped.body);
   }
 });
 

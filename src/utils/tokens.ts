@@ -1,7 +1,7 @@
 // src/utils/tokens.ts
 import jwt from 'jsonwebtoken';
+import { env } from '../config/env';
 
-const EXAM_TOKEN_SECRET = process.env.EXAM_TOKEN_SECRET || 'exam-secret-change-me';
 
 export interface ExamTokenPayload {
   exam_id: number;
@@ -10,9 +10,9 @@ export interface ExamTokenPayload {
 }
 
 export function generateExamToken(payload: ExamTokenPayload): string {
-  return jwt.sign(payload, EXAM_TOKEN_SECRET, { expiresIn: '24h' });
+  return jwt.sign(payload, env.examTokenSecret, { expiresIn: '24h' });
 }
 
 export function verifyExamToken(token: string): ExamTokenPayload {
-  return jwt.verify(token, EXAM_TOKEN_SECRET) as ExamTokenPayload;
+  return jwt.verify(token, env.examTokenSecret) as ExamTokenPayload;
 }

@@ -1,35 +1,14 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
-// src/index.ts
-const express_1 = __importDefault(require("express"));
-const path_1 = __importDefault(require("path"));
 const database_1 = require("./database");
-const auth_1 = __importDefault(require("./routes/auth"));
-const student_1 = __importDefault(require("./routes/student")); // student/index.ts
-const teacher_1 = __importDefault(require("./routes/teacher")); // teacher/index.ts
-const app = (0, express_1.default)();
-const PORT = process.env.PORT || 3000;
-app.use(express_1.default.json());
-app.use(express_1.default.static(path_1.default.join(__dirname, '..', 'public')));
-// Public routes
-app.use('/api', auth_1.default);
-app.use('/api', student_1.default); // no auth
-// Protected routes (auth applied inside teacher/index.ts)
-app.use('/api', teacher_1.default);
-app.get('/exam/:id', (req, res) => {
-    res.sendFile(path_1.default.join(__dirname, '..', 'public', 'exam.html'));
-});
-app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok' });
-});
+const app_1 = require("./app");
+const env_1 = require("./config/env");
+const app = (0, app_1.createApp)();
 async function start() {
     await (0, database_1.getDb)();
     console.log('Database ready.');
-    app.listen(PORT, () => {
-        console.log(`Server running on http://localhost:${PORT}`);
+    app.listen(env_1.env.port, () => {
+        console.log(`Server running on http://localhost:${env_1.env.port}`);
     });
 }
 start().catch(console.error);

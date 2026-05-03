@@ -1,8 +1,8 @@
 // src/middleware/auth.ts
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { env } from '../config/env';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
 
 export interface AuthRequest extends Request {
   teacherId?: number;
@@ -16,7 +16,7 @@ export function authMiddleware(req: AuthRequest, res: Response, next: NextFuncti
 
   const token = authHeader.split(' ')[1];
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as { id: number };
+    const payload = jwt.verify(token, env.jwtSecret) as { id: number };
     req.teacherId = payload.id;
     next();
   } catch (err) {

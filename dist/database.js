@@ -5,13 +5,17 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getDb = getDb;
 exports.saveDb = saveDb;
+exports.resetDbForTests = resetDbForTests;
 exports.insertRow = insertRow;
 // src/database.ts
 const sql_js_1 = __importDefault(require("sql.js"));
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
-const DB_PATH = process.env.DB_PATH || path_1.default.join(__dirname, '..', 'data', 'exam.db');
+const env_1 = require("./config/env");
+const schema_1 = require("./database/schema");
+const DB_PATH = env_1.env.dbPath;
 let db;
+let autosaveTimer = null;
 async function getDb() {
     if (db)
         return db;
@@ -23,99 +27,18 @@ async function getDb() {
     if (fs_1.default.existsSync(DB_PATH)) {
         const fileBuffer = fs_1.default.readFileSync(DB_PATH);
         db = new SQL.Database(fileBuffer);
-        // Migrations for new columns and tables
-        const migrations = [
-            `ALTER TABLE exams ADD COLUMN start_time TEXT`,
-            `ALTER TABLE exams ADD COLUMN end_time TEXT`,
-            `CREATE TABLE IF NOT EXISTS question_bank (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        teacher_id INTEGER NOT NULL,
-        text TEXT NOT NULL,
-        option_a TEXT NOT NULL,
-        option_b TEXT NOT NULL,
-        option_c TEXT NOT NULL,
-        option_d TEXT NOT NULL,
-        correct_option TEXT CHECK(correct_option IN ('A','B','C','D')) NOT NULL,
-        tags TEXT,
-        created_at TEXT DEFAULT (datetime('now')),
-        FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE
-      )`
-        ];
-        for (const sql of migrations) {
+        for (const sql of schema_1.SAFE_MIGRATIONS) {
             try {
                 db.run(sql);
             }
-            catch (e) { /* column/table may already exist */ }
+            catch (_e) {
+                // Column/table may already exist in upgraded databases.
+            }
         }
     }
     else {
         db = new SQL.Database();
-        db.run(`
-      CREATE TABLE IF NOT EXISTS teachers (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        created_at TEXT DEFAULT (datetime('now'))
-      );
-
-      CREATE TABLE IF NOT EXISTS exams (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        teacher_id INTEGER NOT NULL,
-        title TEXT NOT NULL,
-        duration_minutes INTEGER NOT NULL,
-        require_name BOOLEAN DEFAULT 1,
-        require_student_id BOOLEAN DEFAULT 0,
-        allow_multiple_submissions BOOLEAN DEFAULT 1,
-        shuffle_questions BOOLEAN DEFAULT 1,
-        shuffle_options BOOLEAN DEFAULT 1,
-        status TEXT DEFAULT 'published' CHECK(status IN ('draft','published')),
-        password TEXT,
-        created_at TEXT DEFAULT (datetime('now')),
-        FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE
-      );
-
-      CREATE TABLE IF NOT EXISTS questions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        exam_id INTEGER NOT NULL,
-        text TEXT NOT NULL,
-        option_a TEXT NOT NULL,
-        option_b TEXT NOT NULL,
-        option_c TEXT NOT NULL,
-        option_d TEXT NOT NULL,
-        correct_option TEXT CHECK(correct_option IN ('A','B','C','D')) NOT NULL,
-        FOREIGN KEY (exam_id) REFERENCES exams(id) ON DELETE CASCADE
-      );
-
-      CREATE TABLE IF NOT EXISTS submissions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        exam_id INTEGER NOT NULL,
-        student_name TEXT,
-        student_id TEXT,
-        score REAL,
-        total_questions INTEGER,
-        started_at TEXT,
-        finished_at TEXT DEFAULT (datetime('now')),
-        FOREIGN KEY (exam_id) REFERENCES exams(id)
-      );
-
-      CREATE TABLE IF NOT EXISTS answers (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        submission_id INTEGER NOT NULL,
-        question_id INTEGER NOT NULL,
-        selected_option TEXT,
-        is_correct BOOLEAN,
-        FOREIGN KEY (submission_id) REFERENCES submissions(id),
-        FOREIGN KEY (question_id) REFERENCES questions(id)
-      );
-
-      CREATE TABLE IF NOT EXISTS exam_students (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        exam_id INTEGER NOT NULL,
-        student_id TEXT NOT NULL,
-        password_hash TEXT NOT NULL,
-        FOREIGN KEY (exam_id) REFERENCES exams(id) ON DELETE CASCADE
-      );
-    `);
+        db.run(schema_1.SCHEMA_SQL);
         saveDb();
     }
     return db;
@@ -131,6 +54,12 @@ function saveDb() {
         fs_1.default.writeFileSync(DB_PATH, buffer);
     }
 }
+function resetDbForTests() {
+    if (db) {
+        db.close();
+    }
+    db = undefined;
+}
 async function insertRow(sql, params) {
     const db = await getDb();
     db.run(sql, params);
@@ -140,7 +69,8 @@ async function insertRow(sql, params) {
     }
     throw new Error('Insert failed');
 }
-setInterval(saveDb, 30000);
+autosaveTimer = setInterval(saveDb, 30000);
+autosaveTimer.unref();
 process.on('exit', saveDb);
 process.on('SIGINT', () => { saveDb(); process.exit(); });
 process.on('SIGTERM', () => { saveDb(); process.exit(); });

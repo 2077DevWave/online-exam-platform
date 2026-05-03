@@ -1,7 +1,7 @@
-const API = '/api';
-let token = localStorage.getItem('token');
-let authMode = 'login';
-let selectedExamId = null;
+import { teacherState, setToken, setSelectedExamId } from './teacher/state.js';
+import { authFetch, getApiBase } from './teacher/api.js';
+
+const API = getApiBase();
 
 document.addEventListener('DOMContentLoaded', () => {
   // Auth
@@ -30,7 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('changePwdBtn').addEventListener('click', changePassword);
 
-  if (token) {
+  if (teacherState.token) {
     showMainPanel();
     loadExams();
     loadQuestionBank();
@@ -51,9 +51,9 @@ function showMainPanel() {
 }
 
 function toggleAuthMode() {
-  authMode = authMode === 'login' ? 'register' : 'login';
-  document.getElementById('authTitle').textContent = authMode === 'login' ? 'Login' : 'Register';
-  document.getElementById('switchModeBtn').textContent = authMode === 'login' ? 'Switch to Register' : 'Switch to Login';
+  teacherState.authMode = teacherState.authMode === 'login' ? 'register' : 'login';
+  document.getElementById('authTitle').textContent = teacherState.authMode === 'login' ? 'Login' : 'Register';
+  document.getElementById('switchModeBtn').textContent = teacherState.authMode === 'login' ? 'Switch to Register' : 'Switch to Login';
 }
 
 async function handleLogin() {
@@ -61,7 +61,7 @@ async function handleLogin() {
   const password = document.getElementById('password').value;
   const errorEl = document.getElementById('authError');
   if (!username || !password) { errorEl.textContent = 'Please fill all fields.'; return; }
-  const url = authMode === 'login' ? `${API}/auth/login` : `${API}/auth/register`;
+  const url = teacherState.authMode === 'login' ? `${API}/auth/login` : `${API}/auth/register`;
   try {
     const res = await fetch(url, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -69,9 +69,8 @@ async function handleLogin() {
     });
     const data = await res.json();
     if (!res.ok) { errorEl.textContent = data.error || 'Auth failed'; return; }
-    if (authMode === 'login') {
-      token = data.token;
-      localStorage.setItem('token', token);
+    if (teacherState.authMode === 'login') {
+      setToken(data.token);
       localStorage.setItem('username', username);
       showMainPanel();
       loadExams();
@@ -79,7 +78,7 @@ async function handleLogin() {
       document.getElementById('username').value = '';
       document.getElementById('password').value = '';
     } else {
-      authMode = 'login';
+      teacherState.authMode = 'login';
       document.getElementById('authTitle').textContent = 'Login';
       document.getElementById('switchModeBtn').textContent = 'Switch to Register';
       errorEl.textContent = 'Registration successful! Please login.';
@@ -120,16 +119,10 @@ async function changePassword() {
 
 function logout() {
   localStorage.clear();
-  token = null;
+  setToken(null);
   showAuth();
-  selectedExamId = null;
+  setSelectedExamId(null);
   document.getElementById('questionSection').classList.add('hidden');
-}
-
-async function authFetch(url, options = {}) {
-  if (!token) throw new Error('Not authenticated');
-  options.headers = { ...options.headers, 'Authorization': `Bearer ${token}` };
-  return fetch(url, options);
 }
 
 // ---------- EXAMS LIST ----------
@@ -260,7 +253,7 @@ async function saveEdit(id) {
     });
     if (res.ok) {
       loadExams();
-      if (selectedExamId === id) selectExam(id);
+      if (teacherState.selectedExamId === id) selectExam(id);
     } else if (res.status === 401) logout();
   } catch (err) { alert('Network error'); }
 }
@@ -306,7 +299,7 @@ async function toggleSubmissions(examId) {
 }
 
 function exportCSV(examId) {
-  window.open(`${API}/exams/${examId}/submissions/export?token=${encodeURIComponent(token)}`, '_blank');
+  window.open(`${API}/exams/${examId}/submissions/export?token=${encodeURIComponent(teacherState.token)}`, '_blank');
 }
 
 async function viewDetails(subId) {
@@ -330,14 +323,92 @@ async function viewDetails(subId) {
 function closeDetailModal() { document.getElementById('subDetailModal').classList.add('hidden'); }
 
 // ---------- STUDENTS ----------
-async function toggleStudents(examId) { /* unchanged */ }
-async function loadStudents(examId) { /* unchanged */ }
-async function addStudent(examId) { /* unchanged */ }
-async function removeStudent(examId, studentId) { /* unchanged */ }
+async function toggleStudents(examId) {
+  const container = document.getElementById(`students-${examId}`);
+  if (container.classList.contains('hidden')) {
+    await loadStudents(examId);
+    container.classList.remove('hidden');
+    return;
+  }
+  container.classList.add('hidden');
+}
+
+async function loadStudents(examId) {
+  const list = document.getElementById(`studentList-${examId}`);
+  if (!list) return;
+  try {
+    const res = await authFetch(`${API}/exams/${examId}/students`);
+    if (!res.ok) {
+      list.innerHTML = '<li class="error">Failed to load students.</li>';
+      return;
+    }
+    const students = await res.json();
+    if (students.length === 0) {
+      list.innerHTML = '<li>No students added yet.</li>';
+      return;
+    }
+    list.innerHTML = '';
+    students.forEach((student) => {
+      const item = document.createElement('li');
+      item.className = 'student-item';
+      item.innerHTML = `
+        <span>${student.student_id}</span>
+        <button class="btn-danger btn-sm">Remove</button>
+      `;
+      item.querySelector('button').addEventListener('click', () => removeStudent(examId, student.student_id));
+      list.appendChild(item);
+    });
+  } catch (_err) {
+    list.innerHTML = '<li class="error">Network error.</li>';
+  }
+}
+
+async function addStudent(examId) {
+  const studentIdInput = document.getElementById(`newStudentId-${examId}`);
+  const passwordInput = document.getElementById(`newStudentPass-${examId}`);
+  const student_id = studentIdInput.value.trim();
+  const password = passwordInput.value;
+  if (!student_id || !password) {
+    alert('Student ID and password are required.');
+    return;
+  }
+  try {
+    const res = await authFetch(`${API}/exams/${examId}/students`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ student_id, password })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      alert(err.error || 'Failed to add student.');
+      return;
+    }
+    studentIdInput.value = '';
+    passwordInput.value = '';
+    await loadStudents(examId);
+  } catch (_err) {
+    alert('Network error');
+  }
+}
+
+async function removeStudent(examId, studentId) {
+  try {
+    const res = await authFetch(`${API}/exams/${examId}/students/${encodeURIComponent(studentId)}`, {
+      method: 'DELETE'
+    });
+    if (!res.ok) {
+      alert('Failed to remove student.');
+      return;
+    }
+    await loadStudents(examId);
+  } catch (_err) {
+    alert('Network error');
+  }
+}
 
 // ---------- QUESTIONS ----------
 async function selectExam(id) {
-  selectedExamId = id;
+  setSelectedExamId(id);
   document.getElementById('questionSection').classList.remove('hidden');
   document.getElementById('bankTargetExam').textContent = 'Exam ' + id;
   try {
@@ -368,7 +439,7 @@ async function selectExam(id) {
 }
 
 async function addQuestion() {
-  if (!selectedExamId) return;
+  if (!teacherState.selectedExamId) return;
   const text = document.getElementById('qText').value.trim();
   const option_a = document.getElementById('optA').value.trim();
   const option_b = document.getElementById('optB').value.trim();
@@ -382,7 +453,7 @@ async function addQuestion() {
   }
   try {
     // Add to exam
-    const res = await authFetch(`${API}/exams/${selectedExamId}/questions`, {
+    const res = await authFetch(`${API}/exams/${teacherState.selectedExamId}/questions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, option_a, option_b, option_c, option_d, correct_option: correct })
@@ -407,7 +478,7 @@ async function addQuestion() {
     document.getElementById('optC').value = '';
     document.getElementById('optD').value = '';
     document.getElementById('saveToBank').checked = false;
-    selectExam(selectedExamId);
+    selectExam(teacherState.selectedExamId);
     if (saveToBank) loadQuestionBank();
   } catch (err) {
     msg.textContent = '❌ Network error'; msg.style.color = 'red';
@@ -417,14 +488,14 @@ async function addQuestion() {
 async function deleteExam(id) {
   if (!confirm('Delete exam?')) return;
   await authFetch(`${API}/exams/${id}`, { method: 'DELETE' });
-  if (selectedExamId === id) { selectedExamId = null; document.getElementById('questionSection').classList.add('hidden'); }
+  if (teacherState.selectedExamId === id) { setSelectedExamId(null); document.getElementById('questionSection').classList.add('hidden'); }
   loadExams();
 }
 
 async function deleteQuestion(qId) {
   if (!confirm('Delete question?')) return;
   await authFetch(`${API}/questions/${qId}`, { method: 'DELETE' });
-  if (selectedExamId) selectExam(selectedExamId);
+  if (teacherState.selectedExamId) selectExam(teacherState.selectedExamId);
 }
 
 // ---------- QUESTION BANK ----------
@@ -473,14 +544,14 @@ async function deleteBankQuestion(id) {
 }
 
 async function copyBankToExam(bankId) {
-  if (!selectedExamId) {
+  if (!teacherState.selectedExamId) {
     alert('Please select an exam first (Manage Questions)');
     return;
   }
   try {
-    const res = await authFetch(`${API}/question-bank/${bankId}/copy-to-exam/${selectedExamId}`, { method: 'POST' });
+    const res = await authFetch(`${API}/question-bank/${bankId}/copy-to-exam/${teacherState.selectedExamId}`, { method: 'POST' });
     if (res.ok) {
-      selectExam(selectedExamId); // refresh questions list
+      selectExam(teacherState.selectedExamId); // refresh questions list
     } else {
       const err = await res.json();
       alert(err.error || 'Failed to copy');

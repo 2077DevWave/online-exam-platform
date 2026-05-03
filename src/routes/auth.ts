@@ -4,9 +4,9 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { getDb, saveDb } from '../database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
+import { env } from '../config/env';
 
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
 
 // POST /api/auth/register
 router.post('/auth/register', async (req: Request, res: Response) => {
@@ -67,7 +67,7 @@ router.post('/auth/login', async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const token = jwt.sign({ id: teacher.id }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ id: teacher.id }, env.jwtSecret, { expiresIn: '7d' });
     res.json({ token });
   } catch (err) {
     console.error(err);
