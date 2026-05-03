@@ -5,6 +5,41 @@ const express_1 = require("express");
 const database_1 = require("../database");
 const router = (0, express_1.Router)();
 /**
+ * GET /api/public/exams/:id
+ * Public endpoint for students – no authentication required.
+ * Returns exam info WITHOUT correct answers.
+ */
+router.get('/public/exams/:id', async (req, res) => {
+    try {
+        const examId = parseInt(String(req.params.id), 10);
+        const db = await (0, database_1.getDb)();
+        // Fetch exam metadata
+        const examStmt = db.prepare('SELECT id, title, duration_minutes, require_name, require_student_id FROM exams WHERE id = ?');
+        examStmt.bind([examId]);
+        let exam = null;
+        if (examStmt.step()) {
+            exam = examStmt.getAsObject();
+        }
+        examStmt.free();
+        if (!exam) {
+            return res.status(404).json({ error: 'Exam not found' });
+        }
+        // Fetch questions (only id, text, options – no correct_option)
+        const qStmt = db.prepare('SELECT id, text, option_a, option_b, option_c, option_d FROM questions WHERE exam_id = ? ORDER BY id');
+        qStmt.bind([examId]);
+        const questions = [];
+        while (qStmt.step()) {
+            questions.push(qStmt.getAsObject());
+        }
+        qStmt.free();
+        res.json({ ...exam, questions });
+    }
+    catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+/**
  * POST /api/submissions
  * Submit an exam attempt
  * Body: {

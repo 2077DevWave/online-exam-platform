@@ -23,7 +23,7 @@
       padding: 20px;
     }
     .container {
-      max-width: 800px;
+      max-width: 900px;
       margin: 0 auto;
       display: flex;
       flex-direction: column;
@@ -36,7 +36,7 @@
       padding: 24px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.04);
     }
-    h1, h2 { margin-bottom: 16px; }
+    h1, h2, h3 { margin-bottom: 16px; }
     label { display: block; margin-bottom: 6px; font-weight: 500; }
     input, select, textarea {
       width: 100%;
@@ -60,30 +60,41 @@
     .btn-danger { background: var(--danger); color: white; }
     .btn-success { background: var(--success); color: white; }
     .btn-sm { padding: 6px 12px; font-size: 13px; }
-    .exam-list, .question-list {
+    .btn-outline { background: white; border: 1px solid var(--primary); color: var(--primary); }
+
+    .exam-list, .question-list, .submission-list {
       list-style: none;
       margin-top: 12px;
     }
-    .exam-item, .question-item {
+    .exam-item, .question-item, .submission-item {
       padding: 10px 14px;
       border: 1px solid var(--border);
       border-radius: 6px;
       margin-bottom: 8px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
       background: #fafbfc;
     }
     .exam-item:hover, .question-item:hover { background: #f0f3f7; }
     .selected { background: #e8f4fd; border-color: var(--primary); }
     .hidden { display: none; }
-    .actions { display: flex; gap: 8px; }
+    .actions { display: flex; gap: 8px; align-items: center; }
     .badge {
       background: #ddd;
       padding: 2px 8px;
       border-radius: 12px;
       font-size: 12px;
     }
+    .link-box {
+      background: #ecf0f1;
+      padding: 4px 10px;
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
+    }
+    .copy-btn { cursor: pointer; background: none; border: none; color: var(--primary); font-weight: bold; }
+    .submission-item { display: flex; justify-content: space-between; }
+    .collapse-area { margin-top: 10px; }
     .error { color: red; margin-top: 6px; }
   </style>
 </head>
@@ -124,12 +135,8 @@
         </div>
       </div>
       <div class="row">
-        <div>
-          <label><input type="checkbox" id="requireName" checked> Require student name</label>
-        </div>
-        <div>
-          <label><input type="checkbox" id="requireId"> Require student ID</label>
-        </div>
+        <div><label><input type="checkbox" id="requireName" checked> Require student name</label></div>
+        <div><label><input type="checkbox" id="requireId"> Require student ID</label></div>
       </div>
       <button class="btn-primary" onclick="createExam()">Create Exam</button>
       <p id="createMsg" style="margin-top:10px;color:green;"></p>
@@ -145,6 +152,10 @@
     <!-- QUESTION MANAGEMENT -->
     <div class="card hidden" id="questionSection">
       <h2>Questions for <span id="selectedExamTitle"></span></h2>
+      <div class="link-box" style="margin-bottom: 16px;">
+        <span id="examLinkText"></span>
+        <button class="copy-btn" onclick="copyExamLink()">📋 Copy</button>
+      </div>
       <ul class="question-list" id="questionList"></ul>
 
       <h3 style="margin-top:20px;">Add Question</h3>
@@ -175,10 +186,10 @@
 <script>
   const API = '/api';
   let token = localStorage.getItem('token');
-  let authMode = 'login'; // 'login' or 'register'
+  let authMode = 'login';
   let selectedExamId = null;
 
-  // On page load
+  // Init
   if (token) {
     showMainPanel();
     loadExams();
@@ -194,7 +205,6 @@
   function showMainPanel() {
     document.getElementById('authSection').classList.add('hidden');
     document.getElementById('mainPanel').classList.remove('hidden');
-    // set display username (from token? better to decode or store on login)
     const username = localStorage.getItem('username') || 'Teacher';
     document.getElementById('displayUsername').textContent = username;
   }
@@ -240,7 +250,7 @@
         document.getElementById('username').value = '';
         document.getElementById('password').value = '';
       } else {
-        // Registration successful, switch to login
+        // Registration success – switch to login
         authMode = 'login';
         document.getElementById('authTitle').textContent = 'Login';
         document.querySelector('#authSection button.btn-success').textContent = 'Switch to Register';
@@ -262,7 +272,7 @@
     document.getElementById('questionSection').classList.add('hidden');
   }
 
-  // All API calls now include Authorization header
+  // Helper for authenticated fetch
   async function authFetch(url, options = {}) {
     if (!token) throw new Error('Not authenticated');
     const headers = {
@@ -272,6 +282,7 @@
     return fetch(url, { ...options, headers });
   }
 
+  // Load all exams
   async function loadExams() {
     try {
       const res = await authFetch(`${API}/exams`);
@@ -286,17 +297,25 @@
         noExams.classList.add('hidden');
         exams.forEach(exam => {
           const li = document.createElement('li');
-          li.className = 'exam-item' + (selectedExamId === exam.id ? ' selected' : '');
+          li.className = 'exam-item';
           li.innerHTML = `
-            <div>
-              <strong>${exam.title}</strong>
-              <span class="badge">${exam.duration_minutes} min</span>
-              ${exam.require_name ? ' 👤' : ''}${exam.require_student_id ? ' 🪪' : ''}
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <strong>${exam.title}</strong>
+                <span class="badge">${exam.duration_minutes} min</span>
+                ${exam.require_name ? ' 👤' : ''}${exam.require_student_id ? ' 🪪' : ''}
+                <div class="link-box" style="margin-top:6px;">
+                  <span>/exam/${exam.id}</span>
+                  <button class="copy-btn" onclick="copyToClipboard('${window.location.origin}/exam/${exam.id}')">📋</button>
+                </div>
+              </div>
+              <div class="actions">
+                <button class="btn-outline btn-sm" onclick="toggleSubmissions(${exam.id})">📊 Submissions</button>
+                <button class="btn-primary btn-sm" onclick="selectExam(${exam.id})">Manage Questions</button>
+                <button class="btn-danger btn-sm" onclick="deleteExam(${exam.id})">Delete</button>
+              </div>
             </div>
-            <div class="actions">
-              <button class="btn-primary btn-sm" onclick="selectExam(${exam.id})">Manage Questions</button>
-              <button class="btn-danger btn-sm" onclick="deleteExam(${exam.id})">Delete</button>
-            </div>
+            <div id="submissions-${exam.id}" class="collapse-area hidden" style="margin-top:12px;"></div>
           `;
           list.appendChild(li);
         });
@@ -306,6 +325,58 @@
     }
   }
 
+  // Copy exam link
+  function copyToClipboard(text) {
+    navigator.clipboard.writeText(text)
+      .then(() => alert('Link copied!'))
+      .catch(() => alert('Failed to copy'));
+  }
+
+  // Toggle submissions view for an exam
+  async function toggleSubmissions(examId) {
+    const container = document.getElementById(`submissions-${examId}`);
+    if (container.classList.contains('hidden')) {
+      // Load submissions
+      try {
+        const res = await authFetch(`${API}/exams/${examId}/submissions`);
+        if (res.status === 401) { logout(); return; }
+        if (!res.ok) {
+          container.innerHTML = '<p class="error">Failed to load submissions.</p>';
+        } else {
+          const subs = await res.json();
+          if (subs.length === 0) {
+            container.innerHTML = '<p>No submissions yet.</p>';
+          } else {
+            let html = '<ul class="submission-list">';
+            subs.forEach(sub => {
+              html += `
+                <li class="submission-item">
+                  <div>
+                    <strong>${sub.student_name || 'Anonymous'}</strong>
+                    ${sub.student_id ? `(${sub.student_id})` : ''}
+                    <br><small>${new Date(sub.finished_at).toLocaleString()}</small>
+                  </div>
+                  <div>
+                    <span class="badge">${sub.score.toFixed(1)}%</span>
+                    <span>${Math.round(sub.score * sub.total_questions / 100)} / ${sub.total_questions}</span>
+                  </div>
+                </li>
+              `;
+            });
+            html += '</ul>';
+            container.innerHTML = html;
+          }
+        }
+      } catch (err) {
+        container.innerHTML = '<p class="error">Network error.</p>';
+      }
+      container.classList.remove('hidden');
+    } else {
+      container.classList.add('hidden');
+    }
+  }
+
+  // Create a new exam
   async function createExam() {
     const title = document.getElementById('examTitle').value.trim();
     const duration = parseInt(document.getElementById('examDuration').value);
@@ -339,13 +410,13 @@
       }
     } catch (err) {
       msg.textContent = '❌ Network error';
-      msg.style.color = 'red';
     }
   }
 
+  // Select exam for question management
   async function selectExam(id) {
     selectedExamId = id;
-    loadExams(); // highlight
+    loadExams(); // refresh list (for selection styles if needed)
     document.getElementById('questionSection').classList.remove('hidden');
 
     try {
@@ -353,12 +424,14 @@
       if (res.status === 401) { logout(); return; }
       const exam = await res.json();
       document.getElementById('selectedExamTitle').textContent = exam.title;
+      document.getElementById('examLinkText').textContent = `${window.location.origin}/exam/${exam.id}`;
       renderQuestions(exam.questions);
     } catch (err) {
       console.error(err);
     }
   }
 
+  // Render questions list
   function renderQuestions(questions) {
     const list = document.getElementById('questionList');
     list.innerHTML = '';
@@ -366,17 +439,20 @@
       const li = document.createElement('li');
       li.className = 'question-item';
       li.innerHTML = `
-        <div>
-          <strong>${q.text}</strong><br>
-          <small>A: ${q.option_a} | B: ${q.option_b} | C: ${q.option_c} | D: ${q.option_d}</small>
-          <span class="badge">Correct: ${q.correct_option}</span>
+        <div style="display:flex; justify-content:space-between;">
+          <div>
+            <strong>${q.text}</strong><br>
+            <small>A: ${q.option_a} | B: ${q.option_b} | C: ${q.option_c} | D: ${q.option_d}</small>
+            <span class="badge">Correct: ${q.correct_option}</span>
+          </div>
+          <button class="btn-danger btn-sm" onclick="deleteQuestion(${q.id})">Delete</button>
         </div>
-        <button class="btn-danger btn-sm" onclick="deleteQuestion(${q.id})">Delete</button>
       `;
       list.appendChild(li);
     });
   }
 
+  // Add a question
   async function addQuestion() {
     if (!selectedExamId) return;
     const text = document.getElementById('qText').value.trim();
@@ -416,10 +492,10 @@
       }
     } catch (err) {
       msg.textContent = '❌ Network error';
-      msg.style.color = 'red';
     }
   }
 
+  // Delete an exam
   async function deleteExam(id) {
     if (!confirm('Delete this exam and all its questions/submissions?')) return;
     try {
@@ -435,6 +511,7 @@
     }
   }
 
+  // Delete a question
   async function deleteQuestion(qId) {
     if (!confirm('Delete this question?')) return;
     try {

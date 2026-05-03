@@ -3,8 +3,8 @@ import express from 'express';
 import path from 'path';
 import { getDb } from './database';
 import authRoutes from './routes/auth';
-import teacherRoutes from './routes/teacher';
-import studentRoutes from './routes/student';
+import studentRoutes from './routes/student';    // public
+import teacherRoutes from './routes/teacher';    // protected
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -12,16 +12,15 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
-// Auth routes (public)
+// 1. Auth routes (public)
 app.use('/api', authRoutes);
 
-// Teacher routes (protected)
-app.use('/api', teacherRoutes);
-
-// Student routes (public)
+// 2. Student routes (public) – MUST come before teacher routes
 app.use('/api', studentRoutes);
 
-// Dynamic exam page
+// 3. Teacher routes (protected – authMiddleware applied inside)
+app.use('/api', teacherRoutes);
+
 app.get('/exam/:id', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'exam.html'));
 });

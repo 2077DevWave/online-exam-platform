@@ -117,17 +117,17 @@
   let startTime = null;
   let timeLeft = 0;
 
-  // Load exam info
+  // Load exam info from the PUBLIC endpoint
   async function loadExam() {
     try {
-      const res = await fetch(`${API}/exams/${examId}`);
+      // CHANGED: use /public/exams/ instead of /exams/
+      const res = await fetch(`${API}/public/exams/${examId}`);
       if (!res.ok) throw new Error('Exam not found');
       exam = await res.json();
       document.getElementById('examTitle').textContent = exam.title;
       document.getElementById('examInfo').textContent =
         `${exam.questions.length} questions · ${exam.duration_minutes} minutes`;
       
-      // Show/hide fields based on exam settings
       if (exam.require_name) {
         document.getElementById('nameField').classList.remove('hidden');
       }
@@ -140,7 +140,6 @@
   }
 
   function startExam() {
-    // Validate fields
     const nameField = document.getElementById('studentName');
     const idField = document.getElementById('studentId');
     const errorEl = document.getElementById('startError');
@@ -157,7 +156,7 @@
     document.getElementById('startScreen').classList.add('hidden');
     document.getElementById('examScreen').classList.remove('hidden');
 
-    // Build questions HTML
+    // Build questions HTML (no correct_option exposed)
     let html = '';
     exam.questions.forEach((q, i) => {
       html += `
@@ -185,7 +184,7 @@
       updateTimerDisplay();
       if (timeLeft <= 0) {
         clearInterval(timerInterval);
-        submitExam(); // auto-submit
+        submitExam();
       }
     }, 1000);
   }
@@ -204,7 +203,6 @@
     const submitBtn = document.getElementById('submitBtn');
     submitBtn.disabled = true;
 
-    // Gather answers
     const answers = exam.questions.map(q => {
       const selected = document.querySelector(`input[name="q_${q.id}"]:checked`);
       return {
@@ -236,7 +234,6 @@
       }
 
       const result = await res.json();
-      // Show result
       document.getElementById('examScreen').classList.add('hidden');
       document.getElementById('resultScreen').classList.remove('hidden');
       document.getElementById('resultText').textContent =

@@ -146,4 +146,38 @@ router.delete('/questions/:id', async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
+// GET /api/exams/:id/submissions
+router.get('/exams/:id/submissions', async (req, res) => {
+    try {
+        const teacherId = req.teacherId;
+        const examId = parseInt(String(req.params.id), 10);
+        const db = await (0, database_1.getDb)();
+        // Verify that the exam belongs to this teacher
+        const examStmt = db.prepare('SELECT id FROM exams WHERE id = ? AND teacher_id = ?');
+        examStmt.bind([examId, teacherId]);
+        if (!examStmt.step()) {
+            examStmt.free();
+            return res.status(404).json({ error: 'Exam not found' });
+        }
+        examStmt.free();
+        // Fetch submissions
+        const stmt = db.prepare(`
+      SELECT id, student_name, student_id, score, total_questions, started_at, finished_at
+      FROM submissions
+      WHERE exam_id = ?
+      ORDER BY finished_at DESC
+    `);
+        stmt.bind([examId]);
+        const submissions = [];
+        while (stmt.step()) {
+            submissions.push(stmt.getAsObject());
+        }
+        stmt.free();
+        res.json(submissions);
+    }
+    catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 exports.default = router;

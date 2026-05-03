@@ -4,6 +4,51 @@ import { getDb, saveDb } from '../database';
 
 const router = Router();
 
+
+/**
+ * GET /public/exams/:id
+ * Public – returns exam + questions WITHOUT correct_option
+ */
+router.get('/public/exams/:id', async (req: Request, res: Response) => {
+  try {
+    const examId = parseInt(String(req.params.id), 10);
+    const db = await getDb();
+
+    // Exam metadata
+    const examStmt = db.prepare(`
+      SELECT id, title, duration_minutes, require_name, require_student_id 
+      FROM exams WHERE id = ?
+    `);
+    examStmt.bind([examId]);
+    let exam: any = null;
+    if (examStmt.step()) {
+      exam = examStmt.getAsObject();
+    }
+    examStmt.free();
+
+    if (!exam) {
+      return res.status(404).json({ error: 'Exam not found' });
+    }
+
+    // Questions without correct_option
+    const qStmt = db.prepare(`
+      SELECT id, text, option_a, option_b, option_c, option_d 
+      FROM questions WHERE exam_id = ? ORDER BY id
+    `);
+    qStmt.bind([examId]);
+    const questions: any[] = [];
+    while (qStmt.step()) {
+      questions.push(qStmt.getAsObject());
+    }
+    qStmt.free();
+
+    res.json({ ...exam, questions });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 /**
  * POST /api/submissions
  * Submit an exam attempt
