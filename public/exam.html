@@ -64,28 +64,22 @@
     .hidden { display: none; }
     .error { color: var(--danger); }
     .score { font-size: 20px; text-align: center; margin: 20px 0; }
+    .info { font-size: 14px; color: #666; margin-bottom: 10px; }
   </style>
 </head>
 <body>
 <div class="container" id="app">
+  <!-- START SCREEN / AUTH SCREENS -->
   <div id="startScreen" class="card">
     <h1 id="examTitle">Loading...</h1>
     <p id="examInfo"></p>
-    <div id="studentFields">
-      <div id="nameField" class="hidden">
-        <label>Your Name</label>
-        <input type="text" id="studentName" placeholder="Enter your name">
-      </div>
-      <div id="idField" class="hidden">
-        <label>Student ID</label>
-        <input type="text" id="studentId" placeholder="Enter your student ID">
-      </div>
-      <p class="error" id="startError"></p>
-    </div>
-    <button id="startBtn" onclick="startExam()">Start Exam</button>
+    <div id="authSection"></div>
+    <p class="error" id="startError"></p>
+    <button id="startBtn" onclick="proceedToStart()" disabled>Start Exam</button>
     <p style="margin-top:12px;"><a href="teacher.html">Teacher Panel</a></p>
   </div>
 
+  <!-- EXAM SCREEN -->
   <div id="examScreen" class="hidden">
     <div id="timer">00:00</div>
     <div id="questionsContainer"></div>
@@ -93,6 +87,7 @@
     <p class="error" id="examError"></p>
   </div>
 
+  <!-- RESULT SCREEN -->
   <div id="resultScreen" class="hidden card">
     <h2>Exam Submitted</h2>
     <div class="score" id="resultText"></div>
@@ -110,88 +105,188 @@
   }
 
   let exam = null;
+  let examToken = null;     // token for password/student auth
   let timerInterval = null;
   let startTime = null;
   let timeLeft = 0;
+  let shuffledQuestions = [];
 
   async function loadExam() {
     try {
       const res = await fetch(`${API}/public/exams/${examId}`);
-      if (!res.ok) throw new Error('Exam not found');
+      if (!res.ok) {
+        document.getElementById('startScreen').innerHTML = '<h2>Exam not found or not published</h2>';
+        return;
+      }
       exam = await res.json();
       document.getElementById('examTitle').textContent = exam.title;
       document.getElementById('examInfo').textContent =
         `${exam.questions.length} questions · ${exam.duration_minutes} minutes`;
 
-      if (exam.require_name) {
-        document.getElementById('nameField').classList.remove('hidden');
-      }
-      if (exam.require_student_id) {
-        document.getElementById('idField').classList.remove('hidden');
+      // Build auth section based on exam settings
+      const authDiv = document.getElementById('authSection');
+      authDiv.innerHTML = '';
+
+      if (exam.has_password || exam.require_student_auth) {
+        // Need authentication
+        if (exam.has_password && !exam.require_student_auth) {
+          authDiv.innerHTML = `
+            <div class="info">This exam is password-protected.</div>
+            <input type="password" id="examPassword" placeholder="Enter exam password">
+            <button onclick="authenticatePassword()">Verify Password</button>
+            <p id="passwordError" class="error"></p>
+          `;
+        } else if (exam.require_student_auth) {
+          authDiv.innerHTML = `
+            <div class="info">Please login with your student credentials.</div>
+            <input type="text" id="studentIdInput" placeholder="Student ID">
+            <input type="password" id="studentPasswordInput" placeholder="Password">
+            <button onclick="authenticateStudent()">Login</button>
+            <p id="studentLoginError" class="error"></p>
+          `;
+        }
+        // startBtn remains disabled until authentication succeeds
+      } else {
+        // No auth required, show optional name/id fields
+        if (exam.require_name) {
+          authDiv.innerHTML += `
+            <div>
+              <label>Your Name</label>
+              <input type="text" id="studentName" placeholder="Enter your name">
+            </div>
+          `;
+        }
+        if (exam.require_student_id) {
+          authDiv.innerHTML += `
+            <div>
+              <label>Student ID</label>
+              <input type="text" id="studentId" placeholder="Enter your student ID">
+            </div>
+          `;
+        }
+        document.getElementById('startBtn').disabled = false;
       }
     } catch (err) {
-      document.getElementById('startScreen').innerHTML = `<h2>${err.message}</h2>`;
+      document.getElementById('startScreen').innerHTML = '<h2>Error loading exam</h2>';
     }
+  }
+
+  async function authenticatePassword() {
+    const password = document.getElementById('examPassword').value;
+    const errorEl = document.getElementById('passwordError');
+    try {
+      const res = await fetch(`${API}/public/exams/${examId}/verify-password`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({password})
+      });
+      const data = await res.json();
+      if (!res.ok) { errorEl.textContent = data.error || 'Wrong password'; return; }
+      examToken = data.token;
+      // After password auth, still need name/id if required
+      const authDiv = document.getElementById('authSection');
+      authDiv.innerHTML = '';
+      if (exam.require_name) {
+        authDiv.innerHTML += `<div><label>Your Name</label><input type="text" id="studentName" placeholder="Enter your name"></div>`;
+      }
+      if (exam.require_student_id) {
+        authDiv.innerHTML += `<div><label>Student ID</label><input type="text" id="studentId" placeholder="Enter your student ID"></div>`;
+      }
+      document.getElementById('startBtn').disabled = false;
+      errorEl.textContent = '';
+    } catch (err) { errorEl.textContent = 'Network error'; }
+  }
+
+  async function authenticateStudent() {
+    const student_id = document.getElementById('studentIdInput').value.trim();
+    const password = document.getElementById('studentPasswordInput').value;
+    const errorEl = document.getElementById('studentLoginError');
+    if (!student_id || !password) { errorEl.textContent = 'Please fill both fields.'; return; }
+    try {
+      const res = await fetch(`${API}/public/exams/${examId}/student-login`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({student_id, password})
+      });
+      const data = await res.json();
+      if (!res.ok) { errorEl.textContent = data.error || 'Invalid credentials'; return; }
+      examToken = data.token;
+      // Student ID may be used for submission, already known
+      const authDiv = document.getElementById('authSection');
+      authDiv.innerHTML = '';
+      // If exam requires name, still ask
+      if (exam.require_name) {
+        authDiv.innerHTML += `<div><label>Your Name</label><input type="text" id="studentName" placeholder="Enter your name"></div>`;
+      }
+      // student_id is already known from login, we'll use it later
+      document.getElementById('startBtn').disabled = false;
+      errorEl.textContent = '';
+    } catch (err) { errorEl.textContent = 'Network error'; }
   }
 
   async function checkAlreadySubmitted() {
     const name = document.getElementById('studentName')?.value.trim() || '';
-    const studentId = document.getElementById('studentId')?.value.trim() || '';
+    const studentId = document.getElementById('studentId')?.value || document.getElementById('studentIdInput')?.value || '';
     try {
       const res = await fetch(`${API}/public/exams/${examId}/already-submitted?name=${encodeURIComponent(name)}&student_id=${encodeURIComponent(studentId)}`);
       if (!res.ok) return false;
       const data = await res.json();
       return data.submitted === true;
-    } catch (err) {
-      return false;
-    }
+    } catch (err) { return false; }
   }
 
-  async function startExam() {
-    const nameField = document.getElementById('studentName');
-    const idField = document.getElementById('studentId');
-    const errorEl = document.getElementById('startError');
-
-    if (exam.require_name && !nameField.value.trim()) {
-      errorEl.textContent = 'Please enter your name.';
-      return;
-    }
-    if (exam.require_student_id && !idField.value.trim()) {
-      errorEl.textContent = 'Please enter your student ID.';
-      return;
-    }
-
-    // Check if already submitted (only if exam restricts multiple)
+  async function proceedToStart() {
+    // if already submitted check
     if (!exam.allow_multiple_submissions) {
       const already = await checkAlreadySubmitted();
       if (already) {
-        errorEl.textContent = 'You have already submitted this exam and cannot take it again.';
+        document.getElementById('startError').textContent = 'You have already submitted this exam and cannot take it again.';
         document.getElementById('startBtn').disabled = true;
         return;
       }
     }
 
-    document.getElementById('startScreen').classList.add('hidden');
-    document.getElementById('examScreen').classList.remove('hidden');
+    // Prepare shuffled questions if needed
+    shuffledQuestions = [...exam.questions];
+    if (exam.shuffle_questions) {
+      // Fisher-Yates shuffle
+      for (let i = shuffledQuestions.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffledQuestions[i], shuffledQuestions[j]] = [shuffledQuestions[j], shuffledQuestions[i]];
+      }
+    }
 
-    // Build questions
+    // Build questions HTML with shuffled options
     let html = '';
-    exam.questions.forEach((q, i) => {
-      html += `
-        <div class="question-block">
-          <p><strong>${i + 1}. ${q.text}</strong></p>
-          <div class="options">
-            ${['A','B','C','D'].map(opt => `
-              <label>
-                <input type="radio" name="q_${q.id}" value="${opt}">
-                ${opt}) ${q[`option_${opt.toLowerCase()}`]}
-              </label>
-            `).join('')}
-          </div>
+    shuffledQuestions.forEach((q, idx) => {
+      const options = [
+        { key: 'A', text: q.option_a },
+        { key: 'B', text: q.option_b },
+        { key: 'C', text: q.option_c },
+        { key: 'D', text: q.option_d }
+      ];
+      if (exam.shuffle_options) {
+        for (let i = options.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [options[i], options[j]] = [options[j], options[i]];
+        }
+      }
+      html += `<div class="question-block">
+        <p><strong>${idx + 1}. ${q.text}</strong></p>
+        <div class="options">
+          ${options.map(opt => `
+            <label>
+              <input type="radio" name="q_${q.id}" value="${opt.key}">
+              ${opt.key}) ${opt.text}
+            </label>
+          `).join('')}
         </div>
-      `;
+      </div>`;
     });
     document.getElementById('questionsContainer').innerHTML = html;
+
+    document.getElementById('startScreen').classList.add('hidden');
+    document.getElementById('examScreen').classList.remove('hidden');
 
     timeLeft = exam.duration_minutes * 60;
     startTime = new Date().toISOString();
@@ -219,33 +314,36 @@
     const submitBtn = document.getElementById('submitBtn');
     submitBtn.disabled = true;
 
-    const answers = exam.questions.map(q => {
+    const answers = shuffledQuestions.map(q => {
       const selected = document.querySelector(`input[name="q_${q.id}"]:checked`);
       return { question_id: q.id, selected_option: selected ? selected.value : null };
     });
 
+    // Determine student name/id from UI or token
+    let student_name = document.getElementById('studentName')?.value || null;
+    let student_id = document.getElementById('studentId')?.value || document.getElementById('studentIdInput')?.value || null;
+
     const payload = {
       exam_id: examId,
-      student_name: document.getElementById('studentName')?.value || null,
-      student_id: document.getElementById('studentId')?.value || null,
+      student_name,
+      student_id,
       started_at: startTime,
-      answers
+      answers,
+      exam_token: examToken   // if null, backend will handle accordingly
     };
 
     try {
       const res = await fetch(`${API}/submissions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        method:'POST',
+        headers:{'Content-Type':'application/json', 'Authorization': examToken ? `Bearer ${examToken}` : undefined},
+        body:JSON.stringify(payload)
       });
-
       if (!res.ok) {
         const err = await res.json();
         document.getElementById('examError').textContent = 'Submission failed: ' + (err.error || 'Unknown error');
         submitBtn.disabled = false;
         return;
       }
-
       const result = await res.json();
       document.getElementById('examScreen').classList.add('hidden');
       document.getElementById('resultScreen').classList.remove('hidden');

@@ -4,94 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Teacher Panel</title>
-  <style>
-    :root {
-      --bg: #f4f7fc;
-      --card-bg: white;
-      --border: #dce1e8;
-      --text: #2c3e50;
-      --primary: #3498db;
-      --danger: #e74c3c;
-      --success: #27ae60;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: system-ui, -apple-system, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      line-height: 1.6;
-      padding: 20px;
-    }
-    .container { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 30px; }
-    .card {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 24px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-    }
-    h1, h2, h3 { margin-bottom: 16px; }
-    label { display: block; margin-bottom: 6px; font-weight: 500; }
-    input, select, textarea {
-      width: 100%;
-      padding: 10px;
-      margin-bottom: 12px;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      font-size: 14px;
-    }
-    .row { display: flex; gap: 12px; }
-    .row > div { flex: 1; }
-    button {
-      padding: 10px 20px;
-      border: none;
-      border-radius: 6px;
-      font-weight: 600;
-      cursor: pointer;
-      font-size: 14px;
-    }
-    .btn-primary { background: var(--primary); color: white; }
-    .btn-danger { background: var(--danger); color: white; }
-    .btn-success { background: var(--success); color: white; }
-    .btn-sm { padding: 6px 12px; font-size: 13px; }
-    .btn-outline { background: white; border: 1px solid var(--primary); color: var(--primary); }
-    .exam-list, .question-list, .submission-list {
-      list-style: none;
-      margin-top: 12px;
-    }
-    .exam-item, .question-item, .submission-item {
-      padding: 10px 14px;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      margin-bottom: 8px;
-      background: #fafbfc;
-    }
-    .exam-item:hover, .question-item:hover { background: #f0f3f7; }
-    .selected { background: #e8f4fd; border-color: var(--primary); }
-    .hidden { display: none; }
-    .actions { display: flex; gap: 8px; align-items: center; }
-    .badge {
-      background: #ddd;
-      padding: 2px 8px;
-      border-radius: 12px;
-      font-size: 12px;
-    }
-    .link-box {
-      background: #ecf0f1;
-      padding: 4px 10px;
-      border-radius: 6px;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 14px;
-    }
-    .copy-btn { cursor: pointer; background: none; border: none; color: var(--primary); font-weight: bold; }
-    .submission-item { display: flex; justify-content: space-between; }
-    .collapse-area { margin-top: 10px; }
-    .error { color: red; margin-top: 6px; }
-    .edit-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
-    .edit-row label { margin: 0; white-space: nowrap; }
-  </style>
+  <link rel="stylesheet" href="teacher.css">
 </head>
 <body>
 <div class="container">
@@ -103,8 +16,8 @@
     <input type="text" id="username" placeholder="Username">
     <input type="password" id="password" placeholder="Password">
     <div class="row">
-      <button class="btn-primary" onclick="handleLogin()">Login</button>
-      <button class="btn-success" onclick="toggleAuthMode()">Switch to Register</button>
+      <button class="btn-primary" id="loginBtn">Login</button>
+      <button class="btn-success" id="switchModeBtn">Switch to Register</button>
     </div>
     <p id="authError" class="error"></p>
   </div>
@@ -113,7 +26,7 @@
   <div id="mainPanel" class="hidden">
     <div style="display:flex; justify-content:space-between; align-items:center;">
       <h2>Welcome, <span id="displayUsername"></span></h2>
-      <button class="btn-danger btn-sm" onclick="logout()">Logout</button>
+      <button class="btn-danger btn-sm" id="logoutBtn">Logout</button>
     </div>
 
     <!-- CREATE EXAM -->
@@ -128,7 +41,19 @@
         <div><label><input type="checkbox" id="requireId"> Require student ID</label></div>
         <div><label><input type="checkbox" id="allowMultiple" checked> Allow multiple submissions</label></div>
       </div>
-      <button class="btn-primary" onclick="createExam()">Create Exam</button>
+      <div class="row">
+        <div><label><input type="checkbox" id="shuffleQuestions" checked> Shuffle questions</label></div>
+        <div><label><input type="checkbox" id="shuffleOptions" checked> Shuffle options</label></div>
+        <div>
+          <label>Status</label>
+          <select id="examStatus">
+            <option value="published">Published</option>
+            <option value="draft">Draft</option>
+          </select>
+        </div>
+        <div><label>Password (optional)</label><input type="text" id="examPassword" placeholder="Leave empty for none"></div>
+      </div>
+      <button class="btn-primary" id="createExamBtn">Create Exam</button>
       <p id="createMsg" style="margin-top:10px;color:green;"></p>
     </div>
 
@@ -144,7 +69,7 @@
       <h2>Questions for <span id="selectedExamTitle"></span></h2>
       <div class="link-box" style="margin-bottom: 16px;">
         <span id="examLinkText"></span>
-        <button class="copy-btn" onclick="copyToClipboard(document.getElementById('examLinkText').textContent)">📋 Copy</button>
+        <button class="copy-btn" id="copyLinkBtn">📋 Copy</button>
       </div>
       <ul class="question-list" id="questionList"></ul>
 
@@ -167,221 +92,26 @@
           <option value="D">D</option>
         </select>
       </div>
-      <button class="btn-success" onclick="addQuestion()">Add Question</button>
+      <button class="btn-success" id="addQuestionBtn">Add Question</button>
       <p id="qMsg" style="margin-top:10px;"></p>
     </div>
   </div>
 </div>
 
-<script>
-  const API = '/api';
-  let token = localStorage.getItem('token');
-  let authMode = 'login';
-  let selectedExamId = null;
+<!-- MODAL for detailed submission view -->
+<div id="subDetailModal" class="modal-overlay hidden">
+  <div class="modal">
+    <h2>Submission Details</h2>
+    <p><strong>Student:</strong> <span id="detailStudent"></span></p>
+    <p><strong>Score:</strong> <span id="detailScore"></span></p>
+    <table class="detail-table">
+      <thead><tr><th>#</th><th>Question</th><th>Your Answer</th><th>Correct Answer</th><th>Result</th></tr></thead>
+      <tbody id="detailAnswers"></tbody>
+    </table>
+    <button id="closeModalBtn">Close</button>
+  </div>
+</div>
 
-  if (token) { showMainPanel(); loadExams(); } else showAuth();
-
-  function showAuth() { document.getElementById('authSection').classList.remove('hidden'); document.getElementById('mainPanel').classList.add('hidden'); }
-  function showMainPanel() { document.getElementById('authSection').classList.add('hidden'); document.getElementById('mainPanel').classList.remove('hidden'); document.getElementById('displayUsername').textContent = localStorage.getItem('username') || 'Teacher'; }
-
-  function toggleAuthMode() {
-    authMode = authMode === 'login' ? 'register' : 'login';
-    document.getElementById('authTitle').textContent = authMode === 'login' ? 'Login' : 'Register';
-    document.querySelector('#authSection button.btn-success').textContent = authMode === 'login' ? 'Switch to Register' : 'Switch to Login';
-  }
-
-  async function handleLogin() {
-    const username = document.getElementById('username').value.trim();
-    const password = document.getElementById('password').value;
-    const errorEl = document.getElementById('authError');
-    if (!username || !password) { errorEl.textContent = 'Please fill all fields.'; return; }
-    const url = authMode === 'login' ? `${API}/auth/login` : `${API}/auth/register`;
-    try {
-      const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username,password}) });
-      const data = await res.json();
-      if (!res.ok) { errorEl.textContent = data.error || 'Auth failed'; return; }
-      if (authMode === 'login') {
-        token = data.token; localStorage.setItem('token', token); localStorage.setItem('username', username);
-        showMainPanel(); loadExams(); document.getElementById('username').value=''; document.getElementById('password').value='';
-      } else {
-        authMode = 'login'; document.getElementById('authTitle').textContent='Login';
-        document.querySelector('#authSection button.btn-success').textContent='Switch to Register';
-        errorEl.textContent='Registration successful! Please login.'; errorEl.style.color='green';
-        document.getElementById('password').value='';
-      }
-    } catch (err) { errorEl.textContent='Network error'; }
-  }
-
-  function logout() { localStorage.clear(); token=null; showAuth(); selectedExamId=null; document.getElementById('questionSection').classList.add('hidden'); }
-
-  async function authFetch(url, options={}) {
-    if (!token) throw new Error('not auth');
-    options.headers = { ...options.headers, 'Authorization': `Bearer ${token}` };
-    return fetch(url, options);
-  }
-
-  async function loadExams() {
-    try {
-      const res = await authFetch(`${API}/exams`);
-      if (res.status === 401) { logout(); return; }
-      const exams = await res.json();
-      const list = document.getElementById('examList'); list.innerHTML='';
-      if (exams.length === 0) document.getElementById('noExams').classList.remove('hidden');
-      else {
-        document.getElementById('noExams').classList.add('hidden');
-        exams.forEach(exam => {
-          const li = document.createElement('li'); li.className='exam-item';
-          li.innerHTML = `
-            <div id="exam-${exam.id}">
-              <div style="display:flex; justify-content:space-between; align-items:center;">
-                <div>
-                  <strong>${exam.title}</strong>
-                  <span class="badge">${exam.duration_minutes} min</span>
-                  ${exam.require_name ? '👤' : ''}${exam.require_student_id ? '🪪' : ''}
-                  ${exam.allow_multiple_submissions ? '' : ' 🔒single'}
-                  <div class="link-box" style="margin-top:6px;">
-                    <span>/exam/${exam.id}</span>
-                    <button class="copy-btn" onclick="copyToClipboard('${window.location.origin}/exam/${exam.id}')">📋</button>
-                  </div>
-                </div>
-                <div class="actions">
-                  <button class="btn-outline btn-sm" onclick="toggleEdit(${exam.id})">✏️ Edit</button>
-                  <button class="btn-outline btn-sm" onclick="toggleSubmissions(${exam.id})">📊 Submissions</button>
-                  <button class="btn-primary btn-sm" onclick="selectExam(${exam.id})">Manage Questions</button>
-                  <button class="btn-danger btn-sm" onclick="deleteExam(${exam.id})">Delete</button>
-                </div>
-              </div>
-              <div id="submissions-${exam.id}" class="collapse-area hidden"></div>
-              <div id="edit-${exam.id}" class="collapse-area hidden" style="margin-top:12px; padding:12px; background:#f0f5ff; border-radius:8px;">
-                <div class="edit-row">
-                  <label>Title:</label><input type="text" id="editTitle-${exam.id}" value="${exam.title}">
-                  <label>Min:</label><input type="number" id="editDuration-${exam.id}" value="${exam.duration_minutes}" style="width:80px;">
-                </div>
-                <div class="edit-row">
-                  <label><input type="checkbox" id="editReqName-${exam.id}" ${exam.require_name ? 'checked' : ''}> Name</label>
-                  <label><input type="checkbox" id="editReqId-${exam.id}" ${exam.require_student_id ? 'checked' : ''}> Student ID</label>
-                  <label><input type="checkbox" id="editAllowMulti-${exam.id}" ${exam.allow_multiple_submissions ? 'checked' : ''}> Multiple Submissions</label>
-                </div>
-                <button class="btn-success btn-sm" onclick="saveEdit(${exam.id})">Save</button>
-                <button class="btn-sm" onclick="toggleEdit(${exam.id})">Cancel</button>
-              </div>
-            </div>
-          `;
-          list.appendChild(li);
-        });
-      }
-    } catch (err) { console.error(err); }
-  }
-
-  window.toggleEdit = function(id) {
-    const el = document.getElementById(`edit-${id}`);
-    el.classList.toggle('hidden');
-  };
-
-  window.saveEdit = async function(id) {
-    const title = document.getElementById(`editTitle-${id}`).value.trim();
-    const duration = parseInt(document.getElementById(`editDuration-${id}`).value);
-    const require_name = document.getElementById(`editReqName-${id}`).checked;
-    const require_student_id = document.getElementById(`editReqId-${id}`).checked;
-    const allow_multiple_submissions = document.getElementById(`editAllowMulti-${id}`).checked;
-
-    if (!title || !duration) return alert('Title and duration required.');
-    try {
-      const res = await authFetch(`${API}/exams/${id}`, {
-        method:'PUT',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ title, duration_minutes:duration, require_name, require_student_id, allow_multiple_submissions })
-      });
-      if (res.ok) { loadExams(); if (selectedExamId === id) selectExam(id); }
-      else if (res.status===401) logout();
-    } catch (err) { alert('Network error'); }
-  };
-
-  window.copyToClipboard = (text) => navigator.clipboard.writeText(text).then(()=>alert('Link copied!')).catch(()=>alert('Failed'));
-
-  window.toggleSubmissions = async (examId) => {
-    const container = document.getElementById(`submissions-${examId}`);
-    if (container.classList.contains('hidden')) {
-      try {
-        const res = await authFetch(`${API}/exams/${examId}/submissions`);
-        if (!res.ok) { container.innerHTML='<p class="error">Failed</p>'; }
-        else {
-          const subs=await res.json();
-          if(subs.length===0) container.innerHTML='<p>No submissions yet.</p>';
-          else {
-            let html='<ul class="submission-list">';
-            subs.forEach(sub=>{
-              html+=`<li class="submission-item"><div><strong>${sub.student_name||'Anonymous'}</strong> ${sub.student_id||''}<br><small>${new Date(sub.finished_at).toLocaleString()}</small></div><div><span class="badge">${sub.score.toFixed(1)}%</span> ${Math.round(sub.score*sub.total_questions/100)}/${sub.total_questions}</div></li>`;
-            });
-            html+='</ul>'; container.innerHTML=html;
-          }
-        }
-      } catch { container.innerHTML='<p class="error">Network error</p>'; }
-      container.classList.remove('hidden');
-    } else container.classList.add('hidden');
-  };
-
-  window.selectExam = async (id) => {
-    selectedExamId=id;
-    document.getElementById('questionSection').classList.remove('hidden');
-    try {
-      const res=await authFetch(`${API}/exams/${id}`);
-      const exam=await res.json();
-      document.getElementById('selectedExamTitle').textContent=exam.title;
-      document.getElementById('examLinkText').textContent=`${window.location.origin}/exam/${exam.id}`;
-      document.getElementById('questionList').innerHTML='';
-      exam.questions.forEach(q=>{
-        const li=document.createElement('li'); li.className='question-item';
-        li.innerHTML=`<div style="display:flex;justify-content:space-between;"><div><strong>${q.text}</strong><br><small>A:${q.option_a} | B:${q.option_b} | C:${q.option_c} | D:${q.option_d}</small><span class="badge">Correct:${q.correct_option}</span></div><button class="btn-danger btn-sm" onclick="deleteQuestion(${q.id})">Delete</button></div>`;
-        document.getElementById('questionList').appendChild(li);
-      });
-    } catch(err) { console.error(err); }
-  };
-
-  window.deleteExam = async (id) => {
-    if(!confirm('Delete exam?')) return;
-    await authFetch(`${API}/exams/${id}`,{method:'DELETE'});
-    if (selectedExamId===id) { selectedExamId=null; document.getElementById('questionSection').classList.add('hidden'); }
-    loadExams();
-  };
-
-  window.deleteQuestion = async (qId) => {
-    if(!confirm('Delete question?')) return;
-    await authFetch(`${API}/questions/${qId}`,{method:'DELETE'});
-    selectExam(selectedExamId);
-  };
-
-  window.addQuestion = async () => {
-    if(!selectedExamId) return;
-    const text=document.getElementById('qText').value.trim();
-    const option_a=document.getElementById('optA').value.trim();
-    const option_b=document.getElementById('optB').value.trim();
-    const option_c=document.getElementById('optC').value.trim();
-    const option_d=document.getElementById('optD').value.trim();
-    const correct=document.getElementById('correctOption').value;
-    const msg=document.getElementById('qMsg');
-    if(!text||!option_a||!option_b||!option_c||!option_d) { msg.textContent='❌ All fields required'; msg.style.color='red'; return; }
-    try {
-      const res=await authFetch(`${API}/exams/${selectedExamId}/questions`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,option_a,option_b,option_c,option_d,correct_option:correct})});
-      if(res.ok){ msg.textContent='✅ Added!'; msg.style.color='green'; document.getElementById('qText').value=''; document.getElementById('optA').value=''; document.getElementById('optB').value=''; document.getElementById('optC').value=''; document.getElementById('optD').value=''; selectExam(selectedExamId); }
-      else{ const err=await res.json(); msg.textContent='❌ '+(err.error||'Failed'); msg.style.color='red'; }
-    }catch{ msg.textContent='❌ Network error'; msg.style.color='red'; }
-  };
-
-  window.createExam = async () => {
-    const title=document.getElementById('examTitle').value.trim();
-    const duration=parseInt(document.getElementById('examDuration').value);
-    const require_name=document.getElementById('requireName').checked;
-    const require_student_id=document.getElementById('requireId').checked;
-    const allow_multiple_submissions=document.getElementById('allowMultiple').checked;
-    const msg=document.getElementById('createMsg');
-    if(!title||!duration){ msg.textContent='❌ Title and duration required.'; return; }
-    try{
-      const res=await authFetch(`${API}/exams`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,duration_minutes:duration,require_name,require_student_id,allow_multiple_submissions})});
-      if(res.ok){ msg.textContent='✅ Created!'; msg.style.color='green'; document.getElementById('examTitle').value=''; document.getElementById('examDuration').value=30; loadExams(); }
-      else{ const err=await res.json(); msg.textContent='❌ '+(err.error||'Failed'); }
-    }catch{ msg.textContent='❌ Network error'; }
-  };
-</script>
+<script src="teacher.js"></script>
 </body>
 </html>

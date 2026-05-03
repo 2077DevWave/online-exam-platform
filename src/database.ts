@@ -21,11 +21,22 @@ export async function getDb(): Promise<Database> {
     const fileBuffer = fs.readFileSync(DB_PATH);
     db = new SQL.Database(fileBuffer);
 
-    // Migration: add column if it doesn't exist
-    try {
-      db.run(`ALTER TABLE exams ADD COLUMN allow_multiple_submissions INTEGER DEFAULT 1`);
-    } catch (e) {
-      // column already exists – ignore
+    // Migrations for new columns and tables
+    const migrations = [
+      `ALTER TABLE exams ADD COLUMN shuffle_questions INTEGER DEFAULT 1`,
+      `ALTER TABLE exams ADD COLUMN shuffle_options INTEGER DEFAULT 1`,
+      `ALTER TABLE exams ADD COLUMN status TEXT DEFAULT 'published'`,
+      `ALTER TABLE exams ADD COLUMN password TEXT`,
+      `CREATE TABLE IF NOT EXISTS exam_students (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        exam_id INTEGER NOT NULL,
+        student_id TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        FOREIGN KEY (exam_id) REFERENCES exams(id) ON DELETE CASCADE
+      )`
+    ];
+    for (const sql of migrations) {
+      try { db.run(sql); } catch (e) { /* column/table may already exist */ }
     }
   } else {
     db = new SQL.Database();
@@ -45,6 +56,10 @@ export async function getDb(): Promise<Database> {
         require_name BOOLEAN DEFAULT 1,
         require_student_id BOOLEAN DEFAULT 0,
         allow_multiple_submissions BOOLEAN DEFAULT 1,
+        shuffle_questions BOOLEAN DEFAULT 1,
+        shuffle_options BOOLEAN DEFAULT 1,
+        status TEXT DEFAULT 'published' CHECK(status IN ('draft','published')),
+        password TEXT,
         created_at TEXT DEFAULT (datetime('now')),
         FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE
       );
@@ -81,6 +96,14 @@ export async function getDb(): Promise<Database> {
         is_correct BOOLEAN,
         FOREIGN KEY (submission_id) REFERENCES submissions(id),
         FOREIGN KEY (question_id) REFERENCES questions(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS exam_students (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        exam_id INTEGER NOT NULL,
+        student_id TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        FOREIGN KEY (exam_id) REFERENCES exams(id) ON DELETE CASCADE
       );
     `);
     saveDb();
