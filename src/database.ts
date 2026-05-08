@@ -18,6 +18,19 @@ function tableExists(database: Database, tableName: string): boolean {
   return exists;
 }
 
+function columnExists(database: Database, tableName: string, columnName: string): boolean {
+  const stmt = database.prepare(`PRAGMA table_info(${tableName})`);
+  while (stmt.step()) {
+    const row = stmt.getAsObject() as any;
+    if (row.name === columnName) {
+      stmt.free();
+      return true;
+    }
+  }
+  stmt.free();
+  return false;
+}
+
 function applySchema(database: Database) {
   database.run('PRAGMA foreign_keys = ON');
   database.run(BASE_SCHEMA_SQL);
@@ -155,6 +168,39 @@ function ensureSchema(database: Database) {
       database.run('INSERT INTO schema_migrations (version, name) VALUES (?, ?)', [SCHEMA_VERSION, 'bootstrap']);
     }
   }
+
+  if (!columnExists(database, 'exam_questions', 'weight')) {
+    database.run('ALTER TABLE exam_questions ADD COLUMN weight REAL NOT NULL DEFAULT 1.0');
+  }
+  if (!columnExists(database, 'exam_questions', 'negative_mark')) {
+    database.run('ALTER TABLE exam_questions ADD COLUMN negative_mark REAL NOT NULL DEFAULT 0.0');
+  }
+  if (!columnExists(database, 'submission_answers', 'awarded_points')) {
+    database.run('ALTER TABLE submission_answers ADD COLUMN awarded_points REAL NOT NULL DEFAULT 0.0');
+  }
+  if (!columnExists(database, 'submission_answers', 'penalty_points')) {
+    database.run('ALTER TABLE submission_answers ADD COLUMN penalty_points REAL NOT NULL DEFAULT 0.0');
+  }
+  if (!columnExists(database, 'submission_answers', 'needs_review')) {
+    database.run('ALTER TABLE submission_answers ADD COLUMN needs_review BOOLEAN NOT NULL DEFAULT 0');
+  }
+  if (!columnExists(database, 'submission_answers', 'reviewer_override_is_correct')) {
+    database.run('ALTER TABLE submission_answers ADD COLUMN reviewer_override_is_correct BOOLEAN');
+  }
+  if (!columnExists(database, 'submission_answers', 'reviewer_note')) {
+    database.run('ALTER TABLE submission_answers ADD COLUMN reviewer_note TEXT');
+  }
+  if (!columnExists(database, 'submission_answers', 'reviewed_by_teacher_id')) {
+    database.run('ALTER TABLE submission_answers ADD COLUMN reviewed_by_teacher_id INTEGER');
+  }
+  if (!columnExists(database, 'submission_answers', 'reviewed_at')) {
+    database.run('ALTER TABLE submission_answers ADD COLUMN reviewed_at TEXT');
+  }
+
+  database.run(
+    'INSERT OR IGNORE INTO schema_migrations (version, name) VALUES (?, ?)',
+    [SCHEMA_VERSION, 'weighted-scoring-and-attempt-foundation']
+  );
 }
 
 export async function getDb(): Promise<Database> {

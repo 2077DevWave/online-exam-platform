@@ -8,12 +8,26 @@ import { toErrorResponse } from '../../modules/shared/DomainError';
 const router = Router();
 const { teacherExamService } = services;
 
+function parseNonNegativeNumber(value: unknown, fallback: number) {
+  if (value === undefined || value === null || value === '') return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null;
+  }
+  return parsed;
+}
+
 // POST /exams/:id/questions
 router.post('/exams/:id/questions', async (req: AuthRequest, res: Response) => {
   try {
     const teacherId = req.teacherId!;
     const examId = parseInt(String(req.params.id), 10);
-    const { text, option_a, option_b, option_c, option_d, correct_option } = req.body;
+    const { text, option_a, option_b, option_c, option_d, correct_option, weight, negative_mark } = req.body;
+    const parsedWeight = parseNonNegativeNumber(weight, 1);
+    const parsedNegativeMark = parseNonNegativeNumber(negative_mark, 0);
+    if (parsedWeight === null || parsedNegativeMark === null) {
+      return res.status(400).json({ error: 'weight and negative_mark must be non-negative numbers.' });
+    }
 
     if (!text || !option_a || !option_b || !option_c || !option_d || !correct_option) {
       return res.status(400).json({ error: 'Missing required fields.' });
@@ -35,12 +49,19 @@ router.post('/exams/:id/questions', async (req: AuthRequest, res: Response) => {
       [questionItemId, option_a, questionItemId, option_b, questionItemId, option_c, questionItemId, option_d]
     );
     const questionId = await insertRow(
-      'INSERT INTO exam_questions (exam_id, question_item_id, position) VALUES (?, ?, ?)',
-      [examId, questionItemId, Date.now()]
+      'INSERT INTO exam_questions (exam_id, question_item_id, position, weight, negative_mark) VALUES (?, ?, ?, ?, ?)',
+      [examId, questionItemId, Date.now(), parsedWeight, parsedNegativeMark]
     );
     saveDb();
 
-    res.status(201).json({ id: questionId, exam_id: examId, text, correct_option });
+    res.status(201).json({
+      id: questionId,
+      exam_id: examId,
+      text,
+      correct_option,
+      weight: parsedWeight,
+      negative_mark: parsedNegativeMark
+    });
   } catch (err) {
     const mapped = toErrorResponse(err);
     if (mapped.statusCode >= 500) console.error(err);
@@ -53,7 +74,12 @@ router.put('/questions/:id', async (req: AuthRequest, res: Response) => {
   try {
     const teacherId = req.teacherId!;
     const questionId = parseInt(String(req.params.id), 10);
-    const { text, option_a, option_b, option_c, option_d, correct_option } = req.body;
+    const { text, option_a, option_b, option_c, option_d, correct_option, weight, negative_mark } = req.body;
+    const parsedWeight = parseNonNegativeNumber(weight, 1);
+    const parsedNegativeMark = parseNonNegativeNumber(negative_mark, 0);
+    if ((weight !== undefined && parsedWeight === null) || (negative_mark !== undefined && parsedNegativeMark === null)) {
+      return res.status(400).json({ error: 'weight and negative_mark must be non-negative numbers.' });
+    }
 
     if (Number.isNaN(questionId)) {
       return res.status(400).json({ error: 'Invalid question id.' });
@@ -69,6 +95,7 @@ router.put('/questions/:id', async (req: AuthRequest, res: Response) => {
       option_c,
       option_d,
       correct_option
+      , weight, negative_mark
     ].some((v) => v !== undefined);
     if (!hasUpdateField) {
       return res.status(400).json({ error: 'No fields to update.' });
@@ -90,6 +117,13 @@ router.put('/questions/:id', async (req: AuthRequest, res: Response) => {
     ownershipStmt.free();
 
     const itemId = Number(ownedQuestion.question_item_id);
+
+    if (weight !== undefined) {
+      db.run('UPDATE exam_questions SET weight = ? WHERE id = ?', [parsedWeight, questionId]);
+    }
+    if (negative_mark !== undefined) {
+      db.run('UPDATE exam_questions SET negative_mark = ? WHERE id = ?', [parsedNegativeMark, questionId]);
+    }
 
     if (text !== undefined || correct_option !== undefined) {
       const itemFields: string[] = ['updated_at = datetime(\'now\')'];
@@ -133,7 +167,7 @@ router.put('/questions/:id', async (req: AuthRequest, res: Response) => {
     saveDb();
 
     const updatedStmt = db.prepare(`
-      SELECT eq.id, eq.exam_id, qi.text, qi.correct_option,
+      SELECT eq.id, eq.exam_id, eq.weight, eq.negative_mark, qi.text, qi.correct_option,
              MAX(CASE WHEN qio.option_key = 'A' THEN qio.option_text END) AS option_a,
              MAX(CASE WHEN qio.option_key = 'B' THEN qio.option_text END) AS option_b,
              MAX(CASE WHEN qio.option_key = 'C' THEN qio.option_text END) AS option_c,
@@ -142,7 +176,7 @@ router.put('/questions/:id', async (req: AuthRequest, res: Response) => {
       JOIN question_items qi ON qi.id = eq.question_item_id
       JOIN question_item_options qio ON qio.question_item_id = qi.id
       WHERE eq.id = ?
-      GROUP BY eq.id, eq.exam_id, qi.text, qi.correct_option
+      GROUP BY eq.id, eq.exam_id, eq.weight, eq.negative_mark, qi.text, qi.correct_option
     `);
     updatedStmt.bind([questionId]);
     updatedStmt.step();

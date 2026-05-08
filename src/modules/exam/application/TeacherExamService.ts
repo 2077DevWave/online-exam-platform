@@ -54,11 +54,27 @@ export class TeacherExamService {
 
   async ensureOwnership(examId: number, teacherId: number) {
     const db = await getDb();
-    const check = db.prepare('SELECT id FROM exams WHERE id = ? AND teacher_id = ?');
-    check.bind([examId, teacherId]);
-    const exists = check.step();
+    const check = db.prepare('SELECT id, teacher_id FROM exams WHERE id = ?');
+    check.bind([examId]);
+    if (!check.step()) {
+      check.free();
+      throw new DomainError('Exam not found', 404);
+    }
+    const exam = check.getAsObject() as any;
     check.free();
-    if (!exists) {
+    if (Number(exam.teacher_id) === teacherId) return;
+
+    const memberStmt = db.prepare(
+      `SELECT 1 AS ok
+       FROM organization_members om_owner
+       JOIN organization_members om_actor ON om_actor.organization_id = om_owner.organization_id
+       WHERE om_owner.teacher_id = ? AND om_actor.teacher_id = ?
+       LIMIT 1`
+    );
+    memberStmt.bind([Number(exam.teacher_id), teacherId]);
+    const sameOrganization = memberStmt.step();
+    memberStmt.free();
+    if (!sameOrganization) {
       throw new DomainError('Exam not found', 404);
     }
   }

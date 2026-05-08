@@ -15,6 +15,7 @@ export interface PublicExamView {
   has_password: boolean;
   require_student_auth: boolean;
   questions: Array<Record<string, unknown>>;
+  selected_question_ids?: number[];
 }
 
 export class ExamAccessService {
@@ -63,6 +64,7 @@ export class ExamAccessService {
 
     const qStmt = db.prepare(
       `SELECT eq.id, qi.text,
+              eq.weight, eq.negative_mark,
               MAX(CASE WHEN qio.option_key = 'A' THEN qio.option_text END) AS option_a,
               MAX(CASE WHEN qio.option_key = 'B' THEN qio.option_text END) AS option_b,
               MAX(CASE WHEN qio.option_key = 'C' THEN qio.option_text END) AS option_c,
@@ -81,6 +83,50 @@ export class ExamAccessService {
     }
     qStmt.free();
 
+    const poolRulesStmt = db.prepare(
+      'SELECT tag, difficulty, question_count FROM exam_pool_rules WHERE exam_id = ? ORDER BY id'
+    );
+    poolRulesStmt.bind([examId]);
+    const poolRules: Array<{ tag: string | null; difficulty: string | null; question_count: number }> = [];
+    while (poolRulesStmt.step()) poolRules.push(poolRulesStmt.getAsObject() as any);
+    poolRulesStmt.free();
+
+    if (poolRules.length > 0) {
+      const selectedIds = new Set<number>();
+      for (const rule of poolRules) {
+        const count = Number(rule.question_count || 0);
+        if (count <= 0) continue;
+        const candidatesStmt = db.prepare(
+          `SELECT eq.id
+           FROM exam_questions eq
+           LEFT JOIN question_bank_entries qbe ON qbe.question_item_id = eq.question_item_id
+           LEFT JOIN question_items qi ON qi.id = eq.question_item_id
+           WHERE eq.exam_id = ?
+             AND (? IS NULL OR qbe.tags LIKE '%' || ? || '%')
+             AND (? IS NULL OR qi.metadata_json LIKE '%' || ? || '%')
+           ORDER BY RANDOM()`
+        );
+        candidatesStmt.bind([examId, rule.tag, rule.tag, rule.difficulty, rule.difficulty]);
+        let taken = 0;
+        while (candidatesStmt.step() && taken < count) {
+          const row = candidatesStmt.getAsObject() as any;
+          const questionId = Number(row.id);
+          if (!selectedIds.has(questionId)) {
+            selectedIds.add(questionId);
+            taken += 1;
+          }
+        }
+        candidatesStmt.free();
+      }
+      if (selectedIds.size > 0) {
+        questions.splice(
+          0,
+          questions.length,
+          ...questions.filter((question) => selectedIds.has(Number((question as any).id)))
+        );
+      }
+    }
+
     return {
       id: exam.id,
       title: exam.title,
@@ -92,7 +138,8 @@ export class ExamAccessService {
       shuffle_options: !!exam.shuffle_options,
       has_password: !!exam.password,
       require_student_auth: studentCount > 0,
-      questions
+      questions,
+      selected_question_ids: questions.map((question: any) => Number(question.id))
     };
   }
 

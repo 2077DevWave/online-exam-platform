@@ -67,7 +67,27 @@ router.post('/auth/login', async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const token = jwt.sign({ id: teacher.id }, env.jwtSecret, { expiresIn: '7d' });
+    const orgStmt = db.prepare(
+      `SELECT organization_id, role
+       FROM organization_members
+       WHERE teacher_id = ?
+       ORDER BY id
+       LIMIT 1`
+    );
+    orgStmt.bind([teacher.id]);
+    let orgMember: any = null;
+    if (orgStmt.step()) orgMember = orgStmt.getAsObject();
+    orgStmt.free();
+
+    const token = jwt.sign(
+      {
+        id: teacher.id,
+        role: orgMember?.role || 'teacher',
+        organization_id: orgMember?.organization_id ?? null
+      },
+      env.jwtSecret,
+      { expiresIn: '7d' }
+    );
     res.json({ token });
   } catch (err) {
     console.error(err);
@@ -97,6 +117,57 @@ router.put('/auth/change-password', authMiddleware, async (req: AuthRequest, res
     db.run('UPDATE teachers SET password_hash = ? WHERE id = ?', [newHash, teacherId]);
     saveDb();
     res.json({ message: 'Password changed successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/auth/organizations', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const teacherId = req.teacherId!;
+    const { name } = req.body;
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ error: 'Organization name is required' });
+    }
+    const db = await getDb();
+    db.run('INSERT INTO organizations (name) VALUES (?)', [String(name).trim()]);
+    const orgResult = db.exec('SELECT last_insert_rowid() as id');
+    const organizationId = Number(orgResult[0].values[0][0]);
+    db.run(
+      'INSERT INTO organization_members (organization_id, teacher_id, role) VALUES (?, ?, ?)',
+      [organizationId, teacherId, 'admin']
+    );
+    saveDb();
+    res.status(201).json({ organization_id: organizationId });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/auth/organizations/:id/members', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const teacherId = req.teacherId!;
+    const organizationId = parseInt(String(req.params.id), 10);
+    const { member_teacher_id, role = 'teacher' } = req.body;
+    const db = await getDb();
+    const adminStmt = db.prepare(
+      'SELECT 1 AS ok FROM organization_members WHERE organization_id = ? AND teacher_id = ? AND role = \'admin\''
+    );
+    adminStmt.bind([organizationId, teacherId]);
+    if (!adminStmt.step()) {
+      adminStmt.free();
+      return res.status(403).json({ error: 'Only organization admins can manage members' });
+    }
+    adminStmt.free();
+
+    db.run(
+      'INSERT OR REPLACE INTO organization_members (organization_id, teacher_id, role) VALUES (?, ?, ?)',
+      [organizationId, Number(member_teacher_id), role]
+    );
+    saveDb();
+    res.status(201).json({ success: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Internal server error' });

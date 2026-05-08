@@ -11,6 +11,9 @@ let examToken = null;
 let timerInterval = null;
 let timeLeft = 0;
 let shuffledQuestions = [];
+let attemptSessionId = null;
+let autosaveInterval = null;
+let integrityAttached = false;
 
 async function loadExam() {
   try {
@@ -202,7 +205,11 @@ async function proceedToStart() {
   document.getElementById('startScreen').classList.add('hidden');
   document.getElementById('examScreen').classList.remove('hidden');
 
-  timeLeft = exam.duration_minutes * 60;
+  const resumed = await loadResumeState();
+  timeLeft = resumed?.remaining_seconds || exam.duration_minutes * 60;
+  if (!attemptSessionId) {
+    await startAttemptSession();
+  }
   updateTimerDisplay();
   timerInterval = setInterval(() => {
     timeLeft -= 1;
@@ -212,6 +219,12 @@ async function proceedToStart() {
       submitExam();
     }
   }, 1000);
+
+  attachIntegrityListeners();
+  if (autosaveInterval) clearInterval(autosaveInterval);
+  autosaveInterval = setInterval(() => {
+    autosaveAttempt();
+  }, 5000);
 }
 
 function updateTimerDisplay() {
@@ -225,6 +238,7 @@ function updateTimerDisplay() {
 
 async function submitExam() {
   if (timerInterval) clearInterval(timerInterval);
+  if (autosaveInterval) clearInterval(autosaveInterval);
   const submitBtn = document.getElementById('submitBtn');
   submitBtn.disabled = true;
 
@@ -252,11 +266,117 @@ async function submitExam() {
     const result = await res.json();
     document.getElementById('examScreen').classList.add('hidden');
     document.getElementById('resultScreen').classList.remove('hidden');
-    document.getElementById('resultText').textContent = `Your score: ${result.score.toFixed(1)}% (${Math.round((result.score * result.total_questions) / 100)} / ${result.total_questions})`;
+    document.getElementById('resultText').textContent = `Your weighted score: ${result.score.toFixed(1)}% (${result.total_questions} questions)`;
   } catch (_err) {
     document.getElementById('examError').textContent = 'Network error, please try again.';
     submitBtn.disabled = false;
   }
+}
+
+function collectAnswers() {
+  return shuffledQuestions.map((q) => {
+    const selected = document.querySelector(`input[name="q_${q.id}"]:checked`);
+    return { question_id: q.id, selected_option: selected ? selected.value : null };
+  });
+}
+
+async function startAttemptSession() {
+  const student_name = document.getElementById('studentName')?.value || null;
+  const student_id = document.getElementById('studentId')?.value || document.getElementById('studentIdInput')?.value || null;
+  const res = await fetch(`${API}/attempt-sessions/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      exam_id: examId,
+      student_name,
+      student_id,
+      exam_token: examToken,
+      remaining_seconds: timeLeft
+    })
+  });
+  if (res.ok) {
+    const data = await res.json();
+    attemptSessionId = data.attempt_session_id;
+  }
+}
+
+async function autosaveAttempt() {
+  if (!attemptSessionId) return;
+  await fetch(`${API}/attempt-sessions/${attemptSessionId}/autosave`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      answers: collectAnswers(),
+      remaining_seconds: timeLeft,
+      question_order: shuffledQuestions.map((q) => q.id)
+    })
+  });
+}
+
+async function loadResumeState() {
+  const student_name = document.getElementById('studentName')?.value || '';
+  const student_id = document.getElementById('studentId')?.value || document.getElementById('studentIdInput')?.value || '';
+  if (!student_name && !student_id) return null;
+  const params = new URLSearchParams({ exam_id: String(examId), student_name, student_id });
+  const res = await fetch(`${API}/attempt-sessions/resume?${params.toString()}`);
+  if (!res.ok) return null;
+  const data = await res.json();
+  if (!data.resumable) return null;
+
+  attemptSessionId = data.attempt_session_id;
+  if (Array.isArray(data.question_order) && data.question_order.length > 0) {
+    const byId = new Map(shuffledQuestions.map((q) => [q.id, q]));
+    const ordered = data.question_order.map((id) => byId.get(id)).filter(Boolean);
+    if (ordered.length === shuffledQuestions.length) {
+      shuffledQuestions = ordered;
+    }
+  }
+
+  setTimeout(() => {
+    const restored = new Map((data.answers || []).map((a) => [a.question_id, a.selected_option]));
+    shuffledQuestions.forEach((question) => {
+      const selected = restored.get(question.id);
+      if (selected) {
+        const input = document.querySelector(`input[name="q_${question.id}"][value="${selected}"]`);
+        if (input) input.checked = true;
+      }
+    });
+  }, 0);
+  return data;
+}
+
+function attachIntegrityListeners() {
+  if (integrityAttached) return;
+  integrityAttached = true;
+
+  const sendEvent = (event_type, payload = {}) => {
+    const student_id = document.getElementById('studentId')?.value || document.getElementById('studentIdInput')?.value || null;
+    const device_fingerprint = `${navigator.userAgent}|${navigator.language}|${screen.width}x${screen.height}`;
+    fetch(`${API}/integrity-events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        attempt_session_id: attemptSessionId,
+        exam_id: examId,
+        student_id,
+        event_type,
+        payload,
+        device_fingerprint
+      })
+    });
+  };
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) sendEvent('tab_hidden');
+  });
+  window.addEventListener('blur', () => sendEvent('window_blur'));
+  window.addEventListener('offline', () => sendEvent('network_offline'));
+  document.addEventListener('copy', () => sendEvent('copy'));
+  document.addEventListener('paste', () => sendEvent('paste'));
+  window.addEventListener('beforeunload', () => {
+    autosaveAttempt();
+    sendEvent('page_unload', { remaining_seconds: timeLeft });
+  });
 }
 
 window.proceedToStart = proceedToStart;

@@ -18,6 +18,7 @@ let server;
 let baseUrl;
 let teacherToken;
 let examId;
+let weightedExamId;
 
 async function requestJson(method, route, body, headers = {}) {
   const response = await fetch(`${baseUrl}${route}`, {
@@ -105,6 +106,57 @@ test('teacher can register, login, create exam and question', async () => {
     { Authorization: `Bearer ${teacherToken}` }
   );
   assert.equal(questionRes.response.status, 201);
+
+  const weightedExamRes = await requestJson(
+    'POST',
+    '/api/exams',
+    {
+      title: 'Weighted Quiz',
+      duration_minutes: 30,
+      require_name: true,
+      allow_multiple_submissions: true,
+      shuffle_questions: false,
+      shuffle_options: false,
+      status: 'published'
+    },
+    { Authorization: `Bearer ${teacherToken}` }
+  );
+  assert.equal(weightedExamRes.response.status, 201);
+  weightedExamId = weightedExamRes.payload.id;
+
+  const q1 = await requestJson(
+    'POST',
+    `/api/exams/${weightedExamId}/questions`,
+    {
+      text: 'Capital of France?',
+      option_a: 'Paris',
+      option_b: 'Rome',
+      option_c: 'Berlin',
+      option_d: 'Madrid',
+      correct_option: 'A',
+      weight: 2,
+      negative_mark: 0.5
+    },
+    { Authorization: `Bearer ${teacherToken}` }
+  );
+  assert.equal(q1.response.status, 201);
+
+  const q2 = await requestJson(
+    'POST',
+    `/api/exams/${weightedExamId}/questions`,
+    {
+      text: '5 * 5 = ?',
+      option_a: '10',
+      option_b: '20',
+      option_c: '25',
+      option_d: '30',
+      correct_option: 'C',
+      weight: 1,
+      negative_mark: 0
+    },
+    { Authorization: `Bearer ${teacherToken}` }
+  );
+  assert.equal(q2.response.status, 201);
 });
 
 test('public exam flow and submission scoring work', async () => {
@@ -140,4 +192,78 @@ test('single-submission policy blocks duplicate attempts', async () => {
     answers: [{ question_id: examRes.payload.questions[0].id, selected_option: 'A' }]
   });
   assert.equal(duplicateRes.response.status, 409);
+});
+
+test('weighted + negative marking scoring works and rescore updates', async () => {
+  const examRes = await requestJson('GET', `/api/public/exams/${weightedExamId}`);
+  assert.equal(examRes.response.status, 200);
+  assert.equal(examRes.payload.questions.length, 2);
+
+  const firstQuestionId = examRes.payload.questions[0].id;
+  const secondQuestionId = examRes.payload.questions[1].id;
+
+  const submitRes = await requestJson('POST', '/api/submissions', {
+    exam_id: weightedExamId,
+    student_name: 'Charlie',
+    answers: [
+      { question_id: firstQuestionId, selected_option: 'A' },
+      { question_id: secondQuestionId, selected_option: 'A' }
+    ]
+  });
+  assert.equal(submitRes.response.status, 201);
+  assert.equal(submitRes.payload.score.toFixed(1), '66.7');
+
+  const updateQuestion = await requestJson(
+    'PUT',
+    `/api/questions/${secondQuestionId}`,
+    { correct_option: 'A' },
+    { Authorization: `Bearer ${teacherToken}` }
+  );
+  assert.equal(updateQuestion.response.status, 200);
+
+  const rescore = await requestJson(
+    'POST',
+    `/api/exams/${weightedExamId}/submissions/rescore`,
+    {},
+    { Authorization: `Bearer ${teacherToken}` }
+  );
+  assert.equal(rescore.response.status, 200);
+
+  const submissions = await requestJson(
+    'GET',
+    `/api/exams/${weightedExamId}/submissions`,
+    null,
+    { Authorization: `Bearer ${teacherToken}` }
+  );
+  assert.equal(submissions.response.status, 200);
+  assert.equal(submissions.payload[0].score.toFixed(1), '100.0');
+});
+
+test('attempt autosave and resume endpoints persist progress', async () => {
+  const examRes = await requestJson('GET', `/api/public/exams/${weightedExamId}`);
+  const questionId = examRes.payload.questions[0].id;
+
+  const start = await requestJson('POST', '/api/attempt-sessions/start', {
+    exam_id: weightedExamId,
+    student_name: 'Dana',
+    student_id: 'S-1',
+    remaining_seconds: 1700
+  });
+  assert.equal(start.response.status, 201);
+  const attemptId = start.payload.attempt_session_id;
+
+  const autosave = await requestJson('POST', `/api/attempt-sessions/${attemptId}/autosave`, {
+    remaining_seconds: 1600,
+    question_order: [questionId],
+    answers: [{ question_id: questionId, selected_option: 'B' }]
+  });
+  assert.equal(autosave.response.status, 200);
+
+  const resume = await requestJson(
+    'GET',
+    `/api/attempt-sessions/resume?exam_id=${weightedExamId}&student_id=${encodeURIComponent('S-1')}`
+  );
+  assert.equal(resume.response.status, 200);
+  assert.equal(resume.payload.resumable, true);
+  assert.equal(resume.payload.answers[0].selected_option, 'B');
 });

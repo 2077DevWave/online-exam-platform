@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import { getDb, saveDb } from './database';
 import { registerRoutes } from './routes';
 
 export function createApp() {
@@ -7,6 +8,16 @@ export function createApp() {
 
   app.use(express.json());
   app.use(express.static(path.join(__dirname, '..', 'public')));
+
+  setInterval(async () => {
+    const db = await getDb();
+    db.run(
+      `UPDATE notification_jobs
+       SET status = 'sent'
+       WHERE status = 'pending' AND datetime(scheduled_for) <= datetime('now')`
+    );
+    saveDb();
+  }, 30_000).unref();
 
   registerRoutes(app);
 

@@ -342,7 +342,7 @@ async function viewDetails(subId) {
     if (!res.ok) { alert('Failed'); return; }
     const sub = await res.json();
     document.getElementById('detailStudent').textContent = `${sub.student_name || 'Anonymous'} (${sub.student_id || ''})`;
-    document.getElementById('detailScore').textContent = `${sub.score.toFixed(1)}% (${Math.round(sub.score * sub.total_questions / 100)}/${sub.total_questions})`;
+    document.getElementById('detailScore').textContent = `${sub.score.toFixed(1)}% (${sub.total_questions} questions)`;
     const tbody = document.getElementById('detailAnswers');
     tbody.innerHTML = '';
     sub.answers.forEach((ans, idx) => {
@@ -350,6 +350,10 @@ async function viewDetails(subId) {
       row.innerHTML = `<td>${idx+1}</td><td>${ans.text}<br><small>A:${ans.option_a} | B:${ans.option_b} | C:${ans.option_c} | D:${ans.option_d}</small></td><td class="${ans.is_correct?'correct-answer':'wrong-answer'}">${ans.selected_option||'—'}</td><td>${ans.correct_option}</td><td class="${ans.is_correct?'correct-answer':'wrong-answer'}">${ans.is_correct?'✅':'❌'}</td>`;
       tbody.appendChild(row);
     });
+    if (sub.integrity_events?.length) {
+      const events = sub.integrity_events.map((event) => `${event.created_at}: ${event.event_type}`).join('\n');
+      alert(`Integrity events:\n${events}`);
+    }
     document.getElementById('subDetailModal').classList.remove('hidden');
   } catch (err) { console.error(err); }
 }
@@ -462,6 +466,8 @@ async function selectExam(id) {
             <strong>${q.text}</strong><br>
             <small>A: ${q.option_a} | B: ${q.option_b} | C: ${q.option_c} | D: ${q.option_d}</small>
             <span class="badge">Correct: ${q.correct_option}</span>
+            <span class="badge">Weight: ${Number(q.weight || 1).toFixed(2)}</span>
+            <span class="badge">Neg: ${Number(q.negative_mark || 0).toFixed(2)}</span>
           </div>
           <div class="actions">
             <button class="btn-outline btn-sm edit-question-btn" data-q-id="${q.id}">✏️ Edit</button>
@@ -491,6 +497,10 @@ async function selectExam(id) {
               Rescore submissions after save
             </label>
           </div>
+          <div class="row">
+            <input type="number" step="0.01" min="0" id="eqWeight-${q.id}" value="${q.weight || 1}" placeholder="Weight">
+            <input type="number" step="0.01" min="0" id="eqNegative-${q.id}" value="${q.negative_mark || 0}" placeholder="Negative mark">
+          </div>
           <div class="actions">
             <button class="btn-success btn-sm save-question-btn" data-q-id="${q.id}">Save</button>
             <button class="btn-sm cancel-question-btn" data-q-id="${q.id}">Cancel</button>
@@ -519,6 +529,8 @@ async function saveQuestionEdit(questionId, examId) {
   const option_d = document.getElementById(`eqD-${questionId}`).value.trim();
   const correct_option = document.getElementById(`eqCorrect-${questionId}`).value;
   const shouldRescore = document.getElementById(`eqRescore-${questionId}`).checked;
+  const weight = parseFloat(document.getElementById(`eqWeight-${questionId}`).value);
+  const negative_mark = parseFloat(document.getElementById(`eqNegative-${questionId}`).value);
 
   if (!text || !option_a || !option_b || !option_c || !option_d) {
     alert('All question fields are required.');
@@ -529,7 +541,7 @@ async function saveQuestionEdit(questionId, examId) {
     const res = await authFetch(`${API}/questions/${questionId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, option_a, option_b, option_c, option_d, correct_option })
+      body: JSON.stringify({ text, option_a, option_b, option_c, option_d, correct_option, weight, negative_mark })
     });
     if (!res.ok) {
       const err = await res.json();
@@ -559,6 +571,8 @@ async function addQuestion() {
   const option_c = document.getElementById('optC').value.trim();
   const option_d = document.getElementById('optD').value.trim();
   const correct = document.getElementById('correctOption').value;
+  const weight = parseFloat(document.getElementById('qWeight').value || '1');
+  const negative_mark = parseFloat(document.getElementById('qNegative').value || '0');
   const saveToBank = document.getElementById('saveToBank').checked;
   const msg = document.getElementById('qMsg');
   if (!text || !option_a || !option_b || !option_c || !option_d) {
@@ -569,7 +583,7 @@ async function addQuestion() {
     const res = await authFetch(`${API}/exams/${teacherState.selectedExamId}/questions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, option_a, option_b, option_c, option_d, correct_option: correct })
+      body: JSON.stringify({ text, option_a, option_b, option_c, option_d, correct_option: correct, weight, negative_mark })
     });
     if (!res.ok) {
       const err = await res.json();
@@ -590,6 +604,8 @@ async function addQuestion() {
     document.getElementById('optB').value = '';
     document.getElementById('optC').value = '';
     document.getElementById('optD').value = '';
+    document.getElementById('qWeight').value = '1';
+    document.getElementById('qNegative').value = '0';
     document.getElementById('saveToBank').checked = false;
     selectExam(teacherState.selectedExamId);
     if (saveToBank) loadQuestionBank();
