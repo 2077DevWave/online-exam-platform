@@ -350,10 +350,6 @@ async function viewDetails(subId) {
       row.innerHTML = `<td>${idx+1}</td><td>${ans.text}<br><small>A:${ans.option_a} | B:${ans.option_b} | C:${ans.option_c} | D:${ans.option_d}</small></td><td class="${ans.is_correct?'correct-answer':'wrong-answer'}">${ans.selected_option||'—'}</td><td>${ans.correct_option}</td><td class="${ans.is_correct?'correct-answer':'wrong-answer'}">${ans.is_correct?'✅':'❌'}</td>`;
       tbody.appendChild(row);
     });
-    if (sub.integrity_events?.length) {
-      const events = sub.integrity_events.map((event) => `${event.created_at}: ${event.event_type}`).join('\n');
-      alert(`Integrity events:\n${events}`);
-    }
     document.getElementById('subDetailModal').classList.remove('hidden');
   } catch (err) { console.error(err); }
 }
