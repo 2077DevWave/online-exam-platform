@@ -4,95 +4,94 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Exam</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <style>
-    :root {
-      --bg: #f5f7fa;
-      --card: white;
-      --border: #dce1e8;
-      --primary: #3498db;
-      --danger: #e74c3c;
-      --success: #27ae60;
-      --text: #2c3e50;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: system-ui, -apple-system, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      padding: 20px;
-    }
-    .container { max-width: 700px; margin: 0 auto; }
-    .card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 24px;
-      margin-bottom: 20px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-    }
-    h1, h2 { margin-bottom: 16px; }
-    label { display: block; margin-bottom: 6px; font-weight: 500; }
-    input { width: 100%; padding: 10px; margin-bottom: 16px; border: 1px solid var(--border); border-radius: 6px; }
-    button {
-      padding: 12px 24px;
-      border: none;
-      border-radius: 6px;
-      font-weight: 600;
-      cursor: pointer;
-      background: var(--primary);
-      color: white;
-      font-size: 16px;
-    }
-    button:disabled { opacity: 0.6; cursor: not-allowed; }
-    #timer {
-      font-size: 24px;
-      font-weight: bold;
-      text-align: center;
-      padding: 10px;
-      background: #fdf0d5;
-      border-radius: 8px;
-      margin-bottom: 20px;
-    }
-    .question-block {
-      margin-bottom: 20px;
-      padding: 16px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: #fafbfc;
-    }
-    .options label { display: block; margin: 8px 0; font-weight: normal; }
-    .hidden { display: none; }
-    .error { color: var(--danger); }
-    .score { font-size: 20px; text-align: center; margin: 20px 0; }
-    .info { font-size: 14px; color: #666; margin-bottom: 10px; }
-  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/exam/style.css">
 </head>
 <body>
 <div class="container" id="app">
-  <!-- START SCREEN / AUTH SCREENS -->
-  <div id="startScreen" class="card">
-    <button id="startBtn" class="btn btn-primary w-100 mt-2" onclick="proceedToStart()" disabled>Start Exam</button>
-    <p id="examInfo"></p>
-    <div id="authSection"></div>
-    <p class="error" id="startError"></p>
-    <button id="startBtn" onclick="proceedToStart()" disabled>Start Exam</button>
-  <div id="examScreen" class="hidden card mt-3">
+
+  <!-- HEADER -->
+  <div class="exam-header" id="examHeader">
+    <h1 id="examTitle">Loading exam...</h1>
+    <div class="exam-meta" id="examMeta"></div>
   </div>
 
-    <button id="submitBtn" class="btn btn-success mt-2" onclick="submitExam()">Submit Exam</button>
+  <!-- START SCREEN -->
+  <div id="startScreen" class="card">
+    <div id="authSection" class="auth-section"></div>
+    <p class="error" id="startError"></p>
+    <button id="startBtn" class="btn btn-primary btn-block btn-lg" onclick="proceedToStart()" disabled>
+      Start Exam
+    </button>
+  </div>
+
+  <!-- EXAM SCREEN -->
   <div id="examScreen" class="hidden">
-    <div id="timer">00:00</div>
-    <div id="questionsContainer"></div>
-    <button id="submitBtn" onclick="submitExam()">Submit Exam</button>
+    <!-- Timer -->
+    <div id="timer" class="timer-bar timer-normal">
+      <span>⏱ Time Remaining</span>
+      <span id="timerValue">00:00</span>
+    </div>
+
+    <!-- Progress -->
+    <div class="progress-section">
+      <div class="progress-info">
+        <span id="progressLabel">Questions Answered: 0 / 0</span>
+        <span id="progressPercent">0%</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+      </div>
+    </div>
+
+    <!-- Question Navigation -->
+    <div class="question-nav" id="questionNav" role="tablist" aria-label="Question navigation"></div>
+
+    <!-- Question Panel -->
+    <div class="question-panel" id="questionsContainer"></div>
+
+    <!-- Footer -->
+    <div class="exam-footer">
+      <button id="prevBtn" class="btn btn-outline" onclick="navigateQuestion(-1)" aria-label="Previous question">
+        ← Previous
+      </button>
+      <span id="questionCounter" style="font-size:0.9rem;color:var(--text-secondary);"></span>
+      <button id="nextBtn" class="btn btn-outline" onclick="navigateQuestion(1)" aria-label="Next question">
+        Next →
+      </button>
+      <button id="submitBtn" class="btn btn-success btn-lg btn-submit" onclick="showSubmitConfirm()">
+        Submit Exam
+      </button>
+    </div>
     <p class="error" id="examError"></p>
   </div>
 
   <!-- RESULT SCREEN -->
-  <div id="resultScreen" class="hidden card">
+  <div id="resultScreen" class="hidden card result-card">
+    <div class="result-icon success">✓</div>
     <h2>Exam Submitted</h2>
-    <div class="score" id="resultText"></div>
-    <button onclick="window.location.reload()">Take Another Exam</button>
+    <div class="score-circle">
+      <span class="score-value" id="scoreValue">--</span>
+      <span class="score-label" id="scoreLabel">weighted score</span>
+    </div>
+    <p class="score-breakdown" id="resultText"></p>
+    <button class="btn btn-primary btn-lg" onclick="window.location.reload()">Take Another Exam</button>
+  </div>
+
+</div>
+
+<!-- SUBMIT CONFIRMATION MODAL -->
+<div class="modal-overlay hidden" id="submitModal">
+  <div class="modal">
+    <h3>Submit Exam?</h3>
+    <p>You are about to submit your exam. This action cannot be undone.</p>
+    <div class="unanswered-count hidden" id="unansweredBadge">⚠️ 0 questions unanswered</div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="hideSubmitConfirm()">Continue Exam</button>
+      <button class="btn btn-danger" id="confirmSubmitBtn" onclick="submitExam()">Submit Now</button>
+    </div>
   </div>
 </div>
 
