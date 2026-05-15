@@ -4,11 +4,12 @@ import crypto from 'crypto';
 import { getDb, saveDb } from '../../database';
 import { services } from '../../modules/composition';
 import { toErrorResponse } from '../../modules/shared/DomainError';
+import { validateRequest, createSubmissionSchema } from '../../middleware/validation';
 
 const router = Router();
 const { submissionService } = services;
 
-router.post('/submissions', async (req: Request, res: Response) => {
+router.post('/submissions', validateRequest(createSubmissionSchema), async (req: Request, res: Response) => {
   try {
     const result = await submissionService.createSubmission(req.body, req.headers.authorization);
     res.status(201).json(result);

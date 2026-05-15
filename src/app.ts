@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import { getDb, saveDb } from './database';
 import { registerRoutes } from './routes';
+import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 
 export function createApp() {
   const app = express();
@@ -25,9 +26,27 @@ export function createApp() {
     res.sendFile(path.join(__dirname, '..', 'public', 'exam.html'));
   });
 
-  app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok' });
+  // Improved health check that verifies database connection
+  app.get('/api/health', async (req, res, next) => {
+    try {
+      const db = await getDb();
+      // Test database connection with a simple query
+      db.exec('SELECT 1');
+      res.json({ 
+        status: 'ok',
+        database: 'connected',
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      next(error);
+    }
   });
+
+  // Error handling middleware
+  app.use(errorHandler);
+  
+  // 404 handler for unknown routes
+  app.use(notFoundHandler);
 
   return app;
 }
