@@ -5,20 +5,14 @@ import jwt from 'jsonwebtoken';
 import { getDb, saveDb } from '../database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { env } from '../config/env';
+import { validateRequest, loginSchema, registerSchema, changePasswordSchema, organizationSchema, organizationMemberSchema } from '../middleware/validation';
 
 const router = Router();
 
 // POST /api/auth/register
-router.post('/auth/register', async (req: Request, res: Response) => {
+router.post('/auth/register', validateRequest(registerSchema), async (req: Request, res: Response) => {
   try {
     const { username, password } = req.body;
-    if (!username || !password) {
-      return res.status(400).json({ error: 'Username and password are required' });
-    }
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
-    }
-
     const db = await getDb();
 
     // Check if username exists
@@ -45,12 +39,9 @@ router.post('/auth/register', async (req: Request, res: Response) => {
 });
 
 // POST /api/auth/login
-router.post('/auth/login', async (req: Request, res: Response) => {
+router.post('/auth/login', validateRequest(loginSchema), async (req: Request, res: Response) => {
   try {
     const { username, password } = req.body;
-    if (!username || !password) {
-      return res.status(400).json({ error: 'Username and password are required' });
-    }
 
     const db = await getDb();
     const stmt = db.prepare('SELECT id, password_hash FROM teachers WHERE username = ?');
@@ -96,13 +87,10 @@ router.post('/auth/login', async (req: Request, res: Response) => {
 });
 
 // PUT /api/auth/change-password (protected)
-router.put('/auth/change-password', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.put('/auth/change-password', authMiddleware, validateRequest(changePasswordSchema), async (req: AuthRequest, res: Response) => {
   try {
     const teacherId = req.teacherId!;
     const { currentPassword, newPassword } = req.body;
-    if (!currentPassword || !newPassword) {
-      return res.status(400).json({ error: 'Current and new password are required' });
-    }
     const db = await getDb();
     const stmt = db.prepare('SELECT password_hash FROM teachers WHERE id = ?');
     stmt.bind([teacherId]);
@@ -123,13 +111,10 @@ router.put('/auth/change-password', authMiddleware, async (req: AuthRequest, res
   }
 });
 
-router.post('/auth/organizations', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.post('/auth/organizations', authMiddleware, validateRequest(organizationSchema), async (req: AuthRequest, res: Response) => {
   try {
     const teacherId = req.teacherId!;
     const { name } = req.body;
-    if (!name || !String(name).trim()) {
-      return res.status(400).json({ error: 'Organization name is required' });
-    }
     const db = await getDb();
     db.run('INSERT INTO organizations (name) VALUES (?)', [String(name).trim()]);
     const orgResult = db.exec('SELECT last_insert_rowid() as id');
@@ -146,7 +131,7 @@ router.post('/auth/organizations', authMiddleware, async (req: AuthRequest, res:
   }
 });
 
-router.post('/auth/organizations/:id/members', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.post('/auth/organizations/:id/members', authMiddleware, validateRequest(organizationMemberSchema), async (req: AuthRequest, res: Response) => {
   try {
     const teacherId = req.teacherId!;
     const organizationId = parseInt(String(req.params.id), 10);
