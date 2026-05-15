@@ -103,11 +103,11 @@ jobs:
       - name: Create .env for production test
         run: |
           cat > .env << EOF
-PORT=3000
-DB_PATH=./test.db
-JWT_SECRET=test-secret-key-for-ci-cd-pipeline-min-32-chars
-EXAM_TOKEN_SECRET=test-exam-token-secret-min-32-chars
-EOF
+          PORT=3000
+          DB_PATH=./test.db
+          JWT_SECRET=test-secret-key-for-ci-cd-pipeline-min-32-chars
+          EXAM_TOKEN_SECRET=test-exam-token-secret-min-32-chars
+          EOF
 
       - name: Start server and health check
         run: |
