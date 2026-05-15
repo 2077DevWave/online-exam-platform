@@ -22,6 +22,13 @@ export class SubmissionService {
     return Math.max(0, Math.min(100, value));
   }
 
+  /**
+   * Rounds score to 2 decimal places to avoid floating-point precision issues
+   */
+  private roundScore(value: number): number {
+    return Math.round(value * 100) / 100;
+  }
+
   private computeScoreRows(
     questions: Array<{ id: number; correct_option: string; weight: number; negative_mark: number }>,
     answers: SubmissionAnswerInput[]
@@ -51,7 +58,7 @@ export class SubmissionService {
     });
 
     const rawScore = totalPossibleWeight > 0 ? ((earned - penalty) / totalPossibleWeight) * 100 : 0;
-    const score = this.clampPercent(rawScore);
+    const score = this.roundScore(this.clampPercent(rawScore));
     return { score, totalPossibleWeight, answerRows };
   }
 

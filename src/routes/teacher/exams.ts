@@ -4,12 +4,13 @@ import { getDb, saveDb } from '../../database';
 import { AuthRequest } from '../../middleware/auth';
 import { services } from '../../modules/composition';
 import { toErrorResponse } from '../../modules/shared/DomainError';
+import { validateRequest, createExamSchema, updateExamSchema, poolRulesSchema } from '../../middleware/validation';
 
 const router = Router();
 const { teacherExamService } = services;
 
 // POST /exams
-router.post('/exams', async (req: AuthRequest, res: Response) => {
+router.post('/exams', validateRequest(createExamSchema), async (req: AuthRequest, res: Response) => {
   try {
     const teacherId = req.teacherId!;
     const {
@@ -138,7 +139,7 @@ router.get('/exams/:id', async (req: AuthRequest, res: Response) => {
 });
 
 // PUT /exams/:id
-router.put('/exams/:id', async (req: AuthRequest, res: Response) => {
+router.put('/exams/:id', validateRequest(updateExamSchema), async (req: AuthRequest, res: Response) => {
   try {
     const teacherId = req.teacherId!;
     const examId = parseInt(String(req.params.id), 10);
@@ -151,7 +152,7 @@ router.put('/exams/:id', async (req: AuthRequest, res: Response) => {
       allow_multiple_submissions = true,
       shuffle_questions = true, shuffle_options = true,
       status = 'published', password,
-      start_time, end_time   // <-- ADD
+      start_time, end_time
     } = req.body;
 
     const fields: string[] = [];
@@ -237,7 +238,7 @@ router.get('/exams/:id/pool-rules', async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.post('/exams/:id/pool-rules', async (req: AuthRequest, res: Response) => {
+router.post('/exams/:id/pool-rules', validateRequest(poolRulesSchema), async (req: AuthRequest, res: Response) => {
   try {
     const teacherId = req.teacherId!;
     const examId = parseInt(String(req.params.id), 10);

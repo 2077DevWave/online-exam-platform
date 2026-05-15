@@ -19,17 +19,26 @@ export interface PublicExamView {
 }
 
 export class ExamAccessService {
+  /**
+   * Parses ISO date string and converts to UTC timestamp for consistent timezone handling
+   */
+  private parseDateTime(dateTimeStr: string | null): number | null {
+    if (!dateTimeStr) return null;
+    const parsed = Date.parse(dateTimeStr);
+    return isNaN(parsed) ? null : parsed;
+  }
+
   private assertExamAvailability(exam: any): void {
     const nowMs = Date.now();
     if (exam.start_time) {
-      const startMs = Date.parse(exam.start_time);
-      if (!Number.isNaN(startMs) && nowMs < startMs) {
+      const startMs = this.parseDateTime(exam.start_time);
+      if (startMs !== null && nowMs < startMs) {
         throw new DomainError(`Exam has not started yet. It will be available at ${exam.start_time}`, 403);
       }
     }
     if (exam.end_time) {
-      const endMs = Date.parse(exam.end_time);
-      if (!Number.isNaN(endMs) && nowMs > endMs) {
+      const endMs = this.parseDateTime(exam.end_time);
+      if (endMs !== null && nowMs > endMs) {
         throw new DomainError('Exam has already ended.', 403);
       }
     }
